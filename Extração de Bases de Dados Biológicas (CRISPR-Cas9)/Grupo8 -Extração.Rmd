@@ -1,0 +1,1407 @@
+---
+title: "Trabalho_Extração, Grupo8"
+Author: "Luís Moncaixa- PG42874 ; Miguel Barros- PG42877 ; José Pereira- PG42871"
+output:
+  html_document:
+    toc: true
+    toc_float: true 
+    toc_depth: 3  
+    number_sections: true  
+    theme: united  
+    highlight: tango  
+---
+
+```{=html}
+<style>
+body {text-align; justify}
+div.fontdoc {font-family: georgia;}
+  body .main-container {
+  max-width: 1750px;
+  }
+<style>
+```
+
+```{css, echo=FALSE}
+pre {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+pre[class] {
+  max-height: 500px;
+}
+```
+
+```{css, echo=FALSE}
+.scroll-100 {
+  max-height: 100px;
+  overflow-y: auto;
+  background-color: inherit;
+}
+```
+
+# **Carregamento dos packages e dos datasets utilizados**
+
+```{r Packages,echo=TRUE, warning = FALSE, message=FALSE}
+library(MultiAssayExperiment)
+library(clusterProfiler)
+library(AnnotationDbi)
+library(ReactomePA)
+library(DESeq2)
+library(edgeR)
+library(gplots)
+library(limma)
+library(Glimma)
+library('org.Hs.eg.db')
+library('RColorBrewer')
+library(tidyverse)
+library(hgu95av2.db)
+library(GOstats)
+library(caret)
+library(ggnewscale)
+library(summarytools)
+library(genefilter)
+library(factoextra)
+library(scatterplot3d)
+library(ggfortify)
+library(dendextend)
+
+CCLE_gene = read.csv('CCLE_gene_cn.csv')
+CCLE_expression = read.csv('CCLE_expression.csv')
+Achilles_gene = read.csv('Achilles_gene_effect.csv')
+Sample_Info = read.csv('sample_info.csv')
+dim(Sample_Info)
+dim(CCLE_expression)
+dim(CCLE_gene)
+dim(Achilles_gene)
+
+```
+
+# **Explicação dos dados, relevância e origem**
+
+## Sample_Info
+
+Dataset contendo as informações genéricas sobre as linhas celulares. Cada linha neste dataset representa uma linhagem celular e ao longo das colunas os atributos associados mesmos. O conteúdo que pode ser encontrado nas colunas encontra-se discriminado na lista abaixo:
+
+*DepMap_ID*: A nomenclatura de identificação (ID) da linha celular associado ao DepMap.
+
+*Stripped_cell_name*: Nome da linha celular com caracteres alfa numéricos.
+
+*CCLE_Name*: Nome para a linha celular utilizado pela Cancer Cell Line Encycopedia(CCLE).
+
+*Alias*: Identificadores da linha celular adicional em lista.
+
+*COSMIC_ID*: ID da linha celular associado à base de dados Cosmic cancer.
+
+*Lineage, lineage_subtype, lineage_sub_subtype, lineage_molecular_subtype*: Classificação standard do tipo de cancro.
+
+*Sex*: Sexo do dador de tecido.
+
+*Source*: Fonte da linha celular utilizada pelo DepMap.
+
+*Achilles_n_replicates*: Número de réplicas utilizadas em Achiles CRISPR screen passadas pelo Quality Control (QC).
+
+*Cell_line_NNMD*: Diferenças nas médias dos controles positivos e negativos normalizados pelo desvio padrão da distribuição do controle negativo.
+
+*Culture_type*: MÉtodo de crescimento da linha celular (Aderente, Suspensão, Aderente e Suspensão misto, 3D ou aderente com revestimento de lâmina).
+
+*Culture_Medium*: Meio utilizado no crescimento da linha celular.
+
+*Cas9_activity*: Percentagem de células marcadas com Green Flourescent Protein (GFP) positivas entre os dias 12-14 para a presença de Cas9, medido pelo Citomátros de Fluxo (FAC).
+
+*RRID*: Identificador de pesquisa para Cellosauros research.
+
+*Sample_collection_site*: Indicações sobre a amostra de tecido, ou seja, se o tecido foi retirado de um carcinoma Primário ou de uma metástase resultante de um carcinoma Primário.
+
+*Disease*: Categoria geral da linhagem cancerígena.
+
+*Disease_subtype*: Nome específico do carcinoma.
+
+*Age*: Idade do dador de tecido.
+
+*Sanger_Model_ID*: ID do passaporte do modelo celular associado ao instituto Sanger.
+
+*Additional_info*: Mais informações sobre alterações nas linhas celulares e a sua resistência a medicamentos.
+
+Este possui **1811 linhas celulares** e **26 colunas** de informações genéricas.
+
+## CCLE_Expression
+CCLE_Expression  é  um dataset obtido pela Cancer Cell Line Encyclopedia(CCLE) sendo a CCLE um projeto responsável por realizar a caracterização genética e farmacológica de modelos de cancro humano, para desenvolver análises computacionais integradas que efetuam a ligação entre vulnerabilidades farmacológicas a padrões genómicos. Este dataset contem dados de expressão genética de RNAseq TPM(Transcripts per million/ É um método de normalização para o RNAseq), para apenas genes codificadores de proteína usando o RSEM(Quantificador de transcritos). Os dados foram transformados através da logaritmação por 2. A linha contém o ID da linha celular associado ao DepMap, já¡ nas colunas a identificação dos genes (Symbol & Entrez ID).
+
+Este possui **1376 linhas celulares**(linhas) e e dados de expressão genética de **19178 genes codificadores de proteína**(colunas).
+
+## CCLE_gene
+CCLE_gene É um dataset obtido pela CCLE. Este dataset contem informação do *Gene Level Copynumber*, É gerado pelo mapeamento dos genes contra linhas celulares. Sendo o *copy number* o número de repetições do gene ao longo do genoma da linha celular. Os resultados encontram-se transformados utilizando a logaritmação por 2, iniciando numa pseudo-contagem de 1, de modo a conter apenas números positivos.
+
+Este possui **1740 linhas celulares**(linhas) e **27563 genes mapeados**(colunas).
+
+## Achilles_gene
+Este dataset É estabelece uma relação entre as linhas celulares (presentes nas linhas) e dados correspondentes aos genes (ID dos mesmos nas colunas).O dados associados a cada gene na linhas celulares retém a informação pós CERES-CERES. O Ceres calcula a probabilidade de um gene ser essencial para a homeostasia e sobrevivência da linha celular. O valor associado ao gene é quanto mais negativo, maior É a sua importância para a sobrevivência da linha celular. Como tratamento final estes valores foram alterados de modo que a média dos genes essenciais seja de -1 e dos que não são essenciais de 0.
+Este possui **808 linhas celulares**(linhas) e **18120 genes mapeados**(colunas).
+
+# **Preparação dos Dataset**
+## Edição dos datasets
+Após o carregamento dos dados, o nome da primeiro coluna (correspondente ao identificador da linha celular) foi alterado para **DepMap_ID**, este identificador foi de seguida atribuído como o **rowname** em todas os dataset. De seguida, foram removidas as colunas associadas ao identificador, no dataset **Sample_Info** foram removidas todas as linhares com atividade de Cas9 inferior a 70 % ou sem um estado de fase de cancro. Por fim, foi removido as linhas com valores omissos do dataset *Achilles_gene*.
+
+```{r, warning = FALSE}
+#Alteração do nome da coluna associado ao DepMap ID das linhas celulares para a mesma nomenclatura
+names(Achilles_gene)[names(Achilles_gene) == "X"] <- "DepMap_ID"
+rownames(Achilles_gene)= Achilles_gene$DepMap_ID
+names(CCLE_expression)[names(CCLE_expression) == "X"] <- "DepMap_ID"
+rownames(CCLE_expression)= CCLE_expression$DepMap_ID
+names(CCLE_gene)[names(CCLE_gene) == "X"] <- "DepMap_ID"
+rownames(CCLE_gene)= CCLE_gene$DepMap_ID
+rownames(Sample_Info)= Sample_Info$DepMap_ID
+
+Achilles_gene = Achilles_gene[,-c(1)]
+CCLE_expression = CCLE_expression[,-c(1)]
+CCLE_gene = CCLE_gene[,-c(1)]
+
+
+#remover coluna respetivamente aos resultados 
+Sample_Info = Sample_Info[,-c(1,6,15,21,22,26)]
+Sample_Info= Sample_Info[which(Sample_Info$cas9_activity>0.70),]
+Sample_Info=Sample_Info[which(Sample_Info$primary_or_metastasis!=""),]
+Achilles_gene = na.exclude(Achilles_gene)
+```
+
+## Filtração entre datasets
+
+Inicialmente foi aplicado o *flat pattern* por desvio de padrão sobre o dataset *CCLE_expression*, uma vez que se pretendia apenas manter os genes com diferenças de expressão entre as múltiplas linhas celulares. De seguida, os datasets foram intersetados com o intuito de manter apenas as **linhas celulares comuns** entre os mesmos.  De seguida, todos os datasets foram reordenados de modo a todos os datasets terem a mesma ordem ao longo das linhas celulares. 
+Foi por fim realizado um gráfico para visualizar a percentagem de dataset perdido com este processo.
+
+```{r, warning = FALSE}
+#flat patterns 
+
+
+exp = as.matrix(CCLE_expression)
+sds = colSds(exp)
+m = median(sds)
+CCLE_expression = CCLE_expression[,sds >= 2*median(sds)]
+
+#Geração de dataset resultantes dos ficheiros iniciais através do cruzamento de ficheiros 
+Sub_sample_info <- Sample_Info %>% filter(rownames(Sample_Info) %in% rownames(Achilles_gene))
+Sub_CRISPR <- Achilles_gene %>% filter(rownames(Achilles_gene) %in% rownames(Sub_sample_info))
+Sub_CCLE_gene <- CCLE_gene %>% filter(rownames(CCLE_gene) %in% rownames(Sub_CRISPR))
+Sub_CCLE_expression <- CCLE_expression %>% filter(rownames(CCLE_expression) %in% rownames(Sub_CCLE_gene))
+Sub_sample_info <- Sub_sample_info %>% filter(rownames(Sub_sample_info) %in% rownames(Sub_CCLE_expression))
+Sub_CRISPR <- Sub_CRISPR %>% filter(rownames(Sub_CRISPR) %in% rownames(Sub_CCLE_expression))
+Sub_CCLE_gene <- Sub_CCLE_gene %>% filter(rownames(Sub_CCLE_gene) %in% rownames(Sub_CCLE_expression))
+
+#ordenadar todos os datatsets pela mesma ordem em rownames
+index = match(rownames(Sub_sample_info),rownames(Sub_CRISPR))
+Sub_CRISPR = Sub_CRISPR[c(index),]
+index = match(rownames(Sub_sample_info),rownames(Sub_CCLE_gene))
+Sub_CCLE_gene = Sub_CCLE_gene[c(index),]
+index = match(rownames(Sub_sample_info),rownames(Sub_CCLE_expression))
+Sub_CCLE_expression = Sub_CCLE_expression[c(index),]
+
+dim(Sub_sample_info)
+
+Lost= c(length(rownames(Sub_sample_info))/length(rownames(Sample_Info)),
+        length(rownames(Sub_CRISPR))/length(rownames(Achilles_gene)),
+        length(rownames(Sub_CCLE_gene))/length(rownames(CCLE_gene)),
+        length(rownames(Sub_CCLE_expression))/length(rownames(CCLE_expression)))
+par(mar=c(10,5,5,5))
+barplot(Lost, ylim=c(0,1.2),las=2, main = 'Dataset loss (%)', names.arg = c('Sub_sample_info','Sub_CRISP', 'Sub_CCLE_gene','Sub_CCLE_expression'))
+
+```
+
+
+Após a interseção dos vários datasets, apenas são mantidas **605 linhas celulares** em todos os datasets. Encontra-se representado no gráfico a percentagem de perda de linhagens celulares em cada dataset. O dataset do ** CCLE_gene** o que perde uma maior quantidade (66%) de dados sobre as linhas celulares. No entanto, o dataset **Sample_info** não perde qualquer linha celular, sendo este o limitante na interação entre datasets.
+
+De modo a manter tambem em comum os genes entre os vários datasets foram tambem cruzados para conterem todos os mesmos genes, semelhantemente ao anteriormente realizado as colunas(genes) foram tambem ordenadas da mesma forma para homogeneizar os vários datasets.
+
+ 
+```{r, warning = FALSE}
+#Intersetar os datasets para ter o mesmo numero de genes
+SubSG_CCLE_Exp = Sub_CCLE_expression[, intersect(colnames(Sub_CCLE_expression), colnames(Sub_CCLE_gene))]
+SubSG_CCLE_genes = Sub_CCLE_gene[, intersect(colnames(Sub_CCLE_gene), colnames(Sub_CCLE_expression))]
+SubSG_CCLE_Exp = SubSG_CCLE_Exp[, intersect(colnames(SubSG_CCLE_Exp),colnames(Sub_CRISPR))]
+SubSG_CCLE_genes = SubSG_CCLE_genes[, intersect(colnames(SubSG_CCLE_genes), colnames(Sub_CRISPR))]
+SubSG_CRISPR = Sub_CRISPR[, intersect(colnames(Sub_CRISPR), colnames(SubSG_CCLE_genes))]
+SubSG_CRISPR = SubSG_CRISPR[, intersect(colnames(SubSG_CRISPR), colnames(SubSG_CCLE_genes))]
+
+index = match(colnames(SubSG_CCLE_Exp),colnames(SubSG_CCLE_genes))
+SubSG_CCLE_genes = SubSG_CCLE_genes[,c(index)]
+index = match(colnames(SubSG_CCLE_Exp),colnames(SubSG_CRISPR))
+SubSG_CRISPR = SubSG_CRISPR[,c(index)]
+
+
+dim(SubSG_CCLE_genes)
+```
+
+No total são mantidos ** 2062 genes**, seguindo apenas estes para as restantes fases.
+
+## Estrutura final dos datasets
+
+```{r, class.output="scroll-100", warning = FALSE}
+sum(is.na(Sub_sample_info))
+sum(is.na(Sub_CCLE_gene))
+sum(is.na(Sub_CCLE_expression))
+sum(is.na(Sub_CRISPR))
+
+str(Sub_sample_info)
+str(Sub_CRISPR)
+str(Sub_CCLE_expression)
+str(Sub_CCLE_gene)
+```
+
+No final apenas o dataset **Sub_sample_info ** mantém 147 valores omissos, estando associado a colunas não relevantes para o estudo. 
+
+# **Análise exploratória**
+## Análise generalizada
+A analise exploratória foi realizada com subgrupo **Sub_sample_info** gerado a partir do dataset **Sample_Info**. Considerado que o objetivo de estudo é estabelecer ligações entre os diferentes datasets, deste modo apenas usadas linhagens celulares comuns a todos os datasets.
+
+```{r, warning = FALSE, class.output="scroll-100"}
+view(dfSummary(Sub_sample_info, style = 'grid', graph.magnif = 0.75,tmp.img.dir = "/tmp"))
+
+#Grafico relativo à origem do cancro
+source = sort(table(Sub_sample_info$source))
+par(mar=c(12,5,5,5))
+barplot(source ,main='Fonte da linhagem de cancro',ylim = c(0,275),col = 'gray',las=2)
+
+#Distribuição dos tipos de cancro
+cancer = table(Sub_sample_info$primary_or_metastasis)
+barplot(cancer,ylim = c(0,500) ,main='Fase do Cancro',col = 'gray',las=2)
+
+```
+
+Iniciando-se por olhar para o sumário deste dataframe é possivel verificar que as variáveis de números 1, 2, 3, e 4 correspondem a ID's de bases de dados e/ou institutos. Variáveis relacionadas com a cultura onde estas linhagens celulares são crescidas (variáveis número 10 e 11) não foram consideradas importantes para este estudo uma vez que o meio deve ser adequado para o crescimento ótimo celular. Relativo a variáveis como a 14, 15, 16, 17, 18, 19, 20 e 21 são relativas ao género específico do carcinoma e denominação. Devido à grande diversidade neste grupo de variáveis não foram consideradas como variáveis de estudo adequadas para as 605 linhas celulares.
+
+Para **Fontes de linhagem de cancro** são apresentados 17 laboratórios de coleta para as várias linhas celulares. O laboratório American Type Culture Collection (ATCC) são a fonte mais comum para as linhagens celulares, sendo seguidos por laboratórios como Deutsche Sammlung von Mikroorganismen und Zellkulturen (DSMZ), Academic lab, Human Science Research Resources Bank (HSRRB), entre outros.
+
+No barplot de **Fase do Cancro** é possivel verificar a existência de uma maior quantidade de carcinomas *'Primary'* do que carcinomas do género *'Mestastasis'*.
+
+## Análise de informação do paciente vs Fase do carcinoma
+Considerando que a característica dos Pacientes tem influência sobre a potencialidade de surgimento de células cancerígenas. Achamos interessante estudar a relação entre a fase em que o cancro foi isolado com as características do Paciente.
+
+
+```{r, warning = FALSE , class.output="scroll-100"}
+#Histograma referente à idade dos pacientes
+idades=which(Sub_sample_info$age != "NA")
+hist(Sub_sample_info$age[idades], breaks = 10, col="darkslategray", 
+     ylim=c(0,150), xlim = c(0,100), main = 'Idade dos Pacientes', xlab = 'Idades', ylab ='')
+
+#Distribuição do Sexo dos Pacientes 
+sexo = table(Sub_sample_info$sex)
+barplot(sexo, ylim=c(0,450), las=2, main = 'Sexo do Paciente')
+
+#Boxplot de interação do tipo de Cancro com as idades do Paciente
+boxplot(Sub_sample_info$age ~ Sub_sample_info$primary_or_metastasis, ylim=c(0,100), xlab = 'Fase do carcinoma', ylab='Idade', col = c('red','grey','darkgreen'),  main = 'Idade vs Fase do Carcinoma')
+
+#Incidencia do tipo de cancro consoante o sexo 
+M = which(Sub_sample_info$sex=='Male')
+F = which(Sub_sample_info$sex=='Female')
+U = which(Sub_sample_info$sex=='Unknown')
+barplot(rbind(table(Sub_sample_info$primary_or_metastasis[M]),table(Sub_sample_info$primary_or_metastasis[F]),table(Sub_sample_info$primary_or_metastasis[U])),las=2,beside = T,col = c('black','darkblue','red'),legend = c('Male','Female','Unknown'),ylim=c(0,200),  main = 'Sexo vs Fase do Carcinoma')
+
+#Anova e Tukey test para análise das variâncias para a idade e tipo de cancro
+anva = aov(Sub_sample_info$age ~ Sub_sample_info$primary_or_metastasis)
+summary(anva)
+TukeyHSD(anva)
+
+#Anova e Tukey test para análise das variâncias para a sexo e tipo de cancro
+g_sex = unique(Sub_sample_info$sex)
+g_PM = unique(Sub_sample_info$primary_or_metastasis)
+sex = as.numeric(factor(Sub_sample_info$sex, levels=g_sex))
+PM = as.numeric(factor(Sub_sample_info$primary_or_metastasis, levels=g_PM))
+
+anvf1 = aov(sex ~ as.factor(PM))
+summary(anvf1)
+TukeyHSD(anvf1)
+```
+
+Quanto à **Fase em que o Cancro** foi extraido pode ser verificado que o mais abundante é o *'Primary'* sendo seguido pela *'Metastasis'*.
+Analisando os dados relativos aos pacientes, como **Idade dos Pacientes** aquando da extração das linhas celulares, é possivel observar que os carcinomas foram isolados maioritariamente a partir de indivíduos na faixa etária entre os **50 aos 70 anos**. Para o **Sexo do Paciente** das linhagens celulares, há um maior número de linhas celulares pertencentes a pacientes do **sexo masculino** do que pacientes do **sexo feminino**, tendo também algumas linhagens celulares para quais o sexo do Paciente de origem é desconhecido.
+O boxplot **Idade vs Fase do Carcinoma** foi construido com o intuito de visualizar a relação entre a Fase do cancro com a idade do paciente. Este aparenta uma distribuição de idades semelhante para as diferentes fases do cancro. No entanto, a Fase primário tem um intervalo interquartil inferior e múltiplos outliers. Com a relação do turkey test é possivel comprovar que a distribuição de idades não tem relação com a fases do carcinoma.
+Já barplot **Sexo vs Fase do Carcinoma** tenta relacionar a fase do cancro com o sexo do paciente das linhas celulares. Foi tambem realizado um turkey test que demostra não haver evidencia estatística para assumir uma relação entre os dois fatores.
+
+## Estatística Univariada dos datasets.
+De seguida foi gerado um loop para testar cada dataset para a sua normalidade segundo o teste de shapiro. Quando a normalidade era verificada, era realizado um teste anova sobre fatores. No entanto, quando não era verificado era realizado um teste de Kruskal-Wallis sobre fatores. Os fatores considerados foram a fase do carcinoma e a doença principal. 
+
+
+```{r, warning = FALSE, class.output="scroll-100"}
+normal = c()
+n_normal = c()
+normal_PM = c()
+normal_lina = c()
+n_normal_PM= c()
+n_normal_lina= c()
+N = 1
+NN=1
+for (i in 1:ncol(SubSG_CCLE_genes))
+  {shat = shapiro.test(SubSG_CCLE_genes[,i])
+  if (shat$p.value > 0.05)
+    {normal[N]=i
+    anv1 = aov(SubSG_CCLE_genes[,i] ~ Sub_sample_info$primary_or_metastasis, data=SubSG_CCLE_genes)
+    anv2 = aov(SubSG_CCLE_genes[,i] ~ Sub_sample_info$primary_disease, data=SubSG_CCLE_genes)
+    normal_PM[N] = na.exclude(summary(anv1)[[1]][["Pr(>F)"]])
+    normal_lina[N] = na.exclude(summary(anv2)[[1]][["Pr(>F)"]])
+    N = N+1}
+  else
+      {n_normal[NN]=i
+      krustal1= kruskal.test(SubSG_CCLE_genes[,i] ~ Sub_sample_info$primary_or_metastasis, data= SubSG_CCLE_genes)
+      krustal2= kruskal.test(SubSG_CCLE_genes[,i] ~ Sub_sample_info$primary_disease, data= SubSG_CCLE_genes)
+      n_normal_PM[NN] = krustal1$p.value
+      n_normal_lina[NN] = krustal2$p.value
+      NN = NN +1}}
+
+length(normal)
+length(n_normal)
+
+colnames(SubSG_CCLE_genes[,normal])
+
+length(which(n_normal_PM < 0.05))
+colnames(SubSG_CCLE_genes[,which(n_normal_PM < 0.05)])
+length(which(n_normal_lina < 0.05))
+colnames(SubSG_CCLE_genes[,which(n_normal_lina < 0.05)])
+```
+
+```{r, warning = FALSE, class.output="scroll-100"}
+normal = c()
+n_normal = c()
+normal_PM = c()
+normal_lina = c()
+n_normal_PM= c()
+n_normal_lina= c()
+N = 1
+NN=1
+
+for (i in 1:ncol(SubSG_CCLE_Exp))
+  {shat = shapiro.test(SubSG_CCLE_Exp[,i])
+  if (shat$p.value > 0.05)
+    {normal[N]=i
+    anv1 = aov(SubSG_CCLE_Exp[,i] ~ Sub_sample_info$primary_or_metastasis, data=SubSG_CCLE_Exp)
+    anv2 = aov(SubSG_CCLE_Exp[,i] ~ Sub_sample_info$primary_disease, data=SubSG_CCLE_Exp)
+    normal_PM[N] = na.exclude(summary(anv1)[[1]][["Pr(>F)"]])
+    normal_lina[N] = na.exclude(summary(anv2)[[1]][["Pr(>F)"]])
+    N = N+1}
+  else
+      {n_normal[NN]=i
+      krustal1= kruskal.test(SubSG_CCLE_Exp[,i] ~ Sub_sample_info$primary_or_metastasis, data= SubSG_CCLE_Exp)
+      krustal2= kruskal.test(SubSG_CCLE_Exp[,i] ~ Sub_sample_info$primary_disease, data= SubSG_CCLE_Exp)
+      n_normal_PM[NN] = krustal1$p.value
+      n_normal_lina[NN] = krustal2$p.value
+      NN = NN +1}}
+
+length(normal)
+length(n_normal)
+
+colnames(SubSG_CCLE_Exp[,normal])
+
+length(which(n_normal_PM < 0.05))
+colnames(SubSG_CCLE_Exp[,which(n_normal_PM < 0.05)])
+length(which(n_normal_lina < 0.05))
+colnames(SubSG_CCLE_Exp[,which(n_normal_lina < 0.05)])
+
+```
+
+```{r, warning = FALSE, class.output="scroll-100"}
+normal = c()
+n_normal = c()
+normal_PM = c()
+normal_lina = c()
+n_normal_PM= c()
+n_normal_lina= c()
+N = 1
+NN=1
+
+for (i in 1:ncol(SubSG_CRISPR))
+  {shat = shapiro.test(SubSG_CRISPR[,i])
+  if (shat$p.value > 0.05)
+    {normal[N]=i
+    anv1 = aov(SubSG_CRISPR[,i] ~ Sub_sample_info$primary_or_metastasis, data=SubSG_CRISPR)
+    anv2 = aov(SubSG_CRISPR[,i] ~ Sub_sample_info$primary_disease, data=SubSG_CRISPR)
+    normal_PM[N] = na.exclude(summary(anv1)[[1]][["Pr(>F)"]])
+    normal_lina[N] = na.exclude(summary(anv2)[[1]][["Pr(>F)"]])
+    N = N+1}
+  else
+      {n_normal[NN]=i
+      krustal1= kruskal.test(SubSG_CRISPR[,i] ~ Sub_sample_info$primary_or_metastasis, data= SubSG_CRISPR)
+      krustal2= kruskal.test(SubSG_CRISPR[,i] ~ Sub_sample_info$primary_disease, data= SubSG_CRISPR)
+      n_normal_PM[NN] = krustal1$p.value
+      n_normal_lina[NN] = krustal2$p.value
+      NN = NN +1}}
+
+length(normal)
+length(n_normal)
+
+colnames(SubSG_CRISPR[,normal])
+
+length(which(n_normal_PM < 0.05))
+colnames(SubSG_CRISPR[,which(n_normal_PM < 0.05)])
+length(which(n_normal_lina < 0.05))
+colnames(SubSG_CRISPR[,which(n_normal_lina < 0.05)])
+
+```
+
+No dataset **SubSG_CCLE_genes ** (resultado do dataset original CCLE_genes) não possui um único gene com distribuição normal. No entanto, segundo o teste de Kruskal-Wallis, ocorrem **367 genes** com variância diferente entre os fatores da fase do cancro e **1883 genes** com variância diferente entre os fatores da doença principal.
+No dataset **SubSG_CCLE_Exp ** (resultado do dataset original CCLE_expression) possui apenas **6 genes** com distribuição normal. Para os genes com uma distribuição não normais no teste de Kruskal-Wallis, ocorrem **512 genes** com variância diferente entre os fatores da fase do cancro e **2055 genes** com variância diferente entre os fatores da doença principal. Para os genes com distribuição normal **2 genes** com variância diferente entre os fatores da fase do carcinoma e **6 genes** com variância diferente entre os fatores da doença principal.
+
+No dataset **SubSG_CRISPR ** (resultado do dataset original Aquilles_gene) possui apenas **24 genes** com distribuição normal. Para os genes com uma distribuição não normais no teste de Kruskal-Wallis, ocorrem **139 genes** com variância diferente entre os fatores da fase do cancro e **677 genes** com variância diferente entre os fatores da doença principal. Para os genes com distribuição normal **0 genes** com variância diferente entre os fatores da fase do carcinoma e **12 genes** com variância diferente entre os fatores da doença principal.
+
+# **Definição dos metadados**
+## Doença principal
+Cada tecido possui propriedades distintas devido as suas funções no organismo, sendo que cada órgão tem células especificadas para determinada função. Por esta razão é de esperar que cancros em tecidos diferentes tenham adaptações diferentes, assim expressão genética diferente entre eles. Deste modo, com o intuito estudar a diferença entre os tecidos provenientes de diferentes órgãos do sistema humano, o dataframe resultante do Sample_info contém as linhas celulares que foram agrupadas.
+
+## Fase do Cancro
+Existem 2 fases distintas para os carcinomas sendo a primeira fase chamada de **cancro primário**, descrita como o início do carcinoma e seu desenvolvimento, a segunda fase corresponde à **fase de metástase**, descrita como a formação de uma nova lesão tumoral a partir da separação de células tumorais do cancro primário. A fase de metástase corresponde ao selo de malignidade cancerígena, ou seja, para a capacidade de transferência dentro do hospedeiro é necessária uma elevada capacidade (múltiplas mutações). Estas mutações evitam a ativação do sistema imunologico e permitem a proliferação numa estrutura diferente do seu carcinoma mãe (cancro primário).
+
+Uma linha celular classificada como *'Primary'* significa que foi retirado de um **cancro Primário**, já uma linha celular classificada como *'Metastasis'* foi extraída de um **cancro metastásico**. Escolhemos estes 2 tipos de Cancros como metadados, pois pretendemos estudar a variância da expressão de genes consoante a sua formação, origem e desenvolvimento. 
+
+
+``` {r, warning = FALSE, warning = FALSE, class.output="scroll-100"}
+#Filtração da tabela original Samples e Expression para a análise diferencial
+table(Sub_sample_info$primary_disease, Sub_sample_info$primary_or_metastasis)
+dis = subset(Sub_sample_info, primary_disease != "Fibroblast" & primary_disease != "Gallbladder Cancer" & primary_disease != "Liposarcoma" & primary_disease != "Teratoma"& primary_disease != "Prostate Cancer")
+Sub_CCLE_expression1 <- SubSG_CCLE_Exp %>% filter(rownames(SubSG_CCLE_Exp) %in% rownames(dis))
+Crispr <- SubSG_CRISPR %>% filter(rownames(SubSG_CRISPR) %in% rownames(Sub_CCLE_expression1))
+CopyNumber <- SubSG_CCLE_genes %>% filter(rownames(SubSG_CCLE_genes) %in% rownames(Sub_CCLE_expression1))
+Sample_Info <- Sample_Info %>% filter(rownames(Sample_Info) %in% rownames(Sub_CCLE_expression1))
+
+inv_CCLE_expression1 <- as.matrix(t(Sub_CCLE_expression1))
+
+
+```
+
+Devido a essência do R foi necessário alterar os nomes de doença principal com o carater “/” de modo a evitar futuros conflitos.
+
+``` {r, warning = FALSE, class.output="scroll-100"}
+
+tab = gsub("/","_",Sample_Info$primary_disease)
+Sample_Info$primary_disease = tab
+space = gsub(" ","_",Sample_Info$primary_disease)
+Sample_Info$primary_disease = space
+
+```
+
+Foi de seguida gerado o heatmap visualizando as diferenças de expressão dos vários tecidos para os 50 genes com valor de p-value mais reduzido: no resultado é possivel visualizar diferenças claras entre alguns grupos de tecidos, sendo mais diferenciado para a **Leucemia** e **Linfoma**. No entanto, é de considerar que estes dois cancros correspondem a tecidos completamente diferentes, sendo não um cancro num órgão solido, mas sim num órgão líquido.
+
+
+``` {r, warning = FALSE, class.output="scroll-100"}
+
+#HeatMap dos 50 genes diferencialmente expressos
+rownames(inv_CCLE_expression1) <- make.names(rownames(inv_CCLE_expression1), unique = TRUE)
+tt = rowttests(inv_CCLE_expression1)
+rank = order(tt$p.value)
+p50 = rank[1:50]
+Best50 = inv_CCLE_expression1[p50,]
+order_cols = order(Sample_Info$primary_disease)
+Best50 = Best50[,order_cols]
+heatmap(Best50, Colv = NA, labCol = sort(Sample_Info$primary_disease))
+
+```
+
+
+
+Para a realização da análise diferencial foi criado um objeto DGE, a partir da função DGEList, que armazena os dados de expressão presentes no dataset. De modo a facilitar a analise de expressão são criados grupos para as várias linhas celulares, este grupo representa a Fase do Carcinoma e o grupo de primary_disease em que cada linha celular se insere.
+
+```{r, warning = FALSE, warning = FALSE, class.output="scroll-100"}
+class(inv_CCLE_expression1) <- 'numeric'
+y <- DGEList(inv_CCLE_expression1)
+group <- factor((paste(Sample_Info$primary_or_metastasis,Sample_Info$primary_disease,sep="_")))
+```
+
+Tendo em conta que o nome de todos os genes presentes no dataset apresentam duas nomenclaturas, provenientes de duas bases de dados biológicas diferentes, HGNC symbol & Entrez ID. Para possibilitar a pesquisa de informação dos genes na base de dados *HUGO Gene Nomenclature Committee (HGNC)*, o EntrezID foi removido da nomenclatura. A HGNC é responsável por definir um símbolo universal para gene humano conhecido.
+
+``` {r, warning = FALSE, warning = FALSE, class.output="scroll-100"}
+#Definir os nomes dos genes para original
+exprname = gsub("\\..*","",rownames(inv_CCLE_expression1))
+rownames(inv_CCLE_expression1) = exprname
+
+exprname1 = gsub("\\..*","",colnames(Sub_CCLE_expression1))
+colnames(Sub_CCLE_expression1) = exprname1
+
+copyname = gsub("\\..*","",colnames(CopyNumber))
+colnames(CopyNumber) = copyname
+
+casname = gsub("\\..*","",colnames(Crispr))
+colnames(Crispr) = casname
+``` 
+
+## Análise sem thresholds
+Precedentemente à aplicação do modelo linear para os níveis de expressão, é criada uma matriz de design para os grupos criados anteriormente, sendo esta criada consoante o número de comparações que se deseja verificar. No nosso caso de estudo, inicialmente pretendia-se comparar as diferentes fases de cancro e as diferenças de cada doença orientada a tecidos diferentes.
+Após a matriz de design e o objeto DGE terem sido gerados, estes serão aplicados a um modelo linear através da função ‘lmFit’. Este modelo linear irá obter as médias dos genes para cada grupo, de acordo com a matriz design.
+Criado o modelo, será importante recolher mais informação adicional sobre os genes em estudo. Através da base de dados ‘Org.Hs.eg.db’, obtivemos, para além do símbolo respetivo de cada gene, o nome do gene e a ENTREZID.
+Toda esta informação adicional sobre os genes será armazenada numa nova coluna no objeto DGE criado com o nome *genes*. Sendo importante para o nosso estudo a comparação da expressão de genes nos vários grupos definidos, torna-se necessário criar uma matriz de contrastes onde serão colocadas todas as comparações de relevo para o nosso estudo. 
+
+### 1º matriz de contrastes
+Foram assim criadas duas matrizes de contrastes, sendo a primeira matriz focada nas comparações entre as diferentes fases do cancro para o mesmo tecido. No final foi aplicado o threshold de modo a tornar os resultados obtidos biologicamente significantes.
+
+
+``` {r, warning = FALSE, class.output="scroll-100"}
+#Design y
+design_y <- model.matrix(~ 0 + group)
+colnames(design_y) <- levels(group)
+
+#model fit para  e y
+fit_y <- lmFit(inv_CCLE_expression1,design_y)
+
+#Annotation
+ann <-AnnotationDbi:: select(org.Hs.eg.db,keys=rownames(fit_y),columns=c("ENTREZID","SYMBOL","GENENAME"),keytype="SYMBOL")
+ann3 <- ann[ann[!is.na(ann)],]
+m = match(rownames(fit_y),ann$SYMBOL)
+fit_y$genes = m
+
+#Matrizes com as comparações a realizar
+cont.matrix_PvM <- makeContrasts(PMBLADE = Primary_Bladder_Cancer - Metastasis_Bladder_Cancer, PMLung = Primary_Lung_Cancer - Metastasis_Lung_Cancer, PMMye = Primary_Myeloma - Metastasis_Myeloma, PMBrain = Primary_Brain_Cancer - Metastasis_Brain_Cancer, PMBone = Primary_Bone_Cancer - Metastasis_Bone_Cancer, PMPancr = Primary_Pancreatic_Cancer - Metastasis_Pancreatic_Cancer, PMLeuk = Primary_Leukemia - Metastasis_Leukemia, PMOVA = Primary_Ovarian_Cancer - Metastasis_Ovarian_Cancer, PMRHA = Primary_Rhabdoid - Metastasis_Rhabdoid, PMBREA = Primary_Breast_Cancer - Metastasis_Breast_Cancer, PMKIDN = Primary_Kidney_Cancer - Metastasis_Kidney_Cancer, PMTHY = Primary_Thyroid_Cancer - Metastasis_Thyroid_Cancer, PMSAR = Primary_Sarcoma - Metastasis_Sarcoma, PMHN = Primary_Head_and_Neck_Cancer - Metastasis_Head_and_Neck_Cancer, PMLIVER = Primary_Liver_Cancer - Metastasis_Liver_Cancer, PMSKIN = Primary_Skin_Cancer - Metastasis_Skin_Cancer, PMColon= Primary_Colon_Colorectal_Cancer - Metastasis_Colon_Colorectal_Cancer, PMEYE = Primary_Eye_Cancer - Metastasis_Eye_Cancer, PMBile = Primary_Bile_Duct_Cancer - Metastasis_Bile_Duct_Cancer,PMLYMPH = Primary_Lymphoma - Metastasis_Lymphoma, PMGast = Primary_Gastric_Cancer - Metastasis_Gastric_Cancer, PMEndo = Primary_Endometrial_Uterine_Cancer  - Metastasis_Endometrial_Uterine_Cancer, PMEso = Primary_Esophageal_Cancer - Metastasis_Esophageal_Cancer, PMNeur = Primary_Neuroblastoma - Metastasis_Neuroblastoma, PMCerv = Primary_Cervical_Cancer - Metastasis_Cervical_Cancer , levels=design_y)
+
+
+
+#Implementar o modelo fit às condições definidas
+fit.cont_PvM <- contrasts.fit(fit_y,cont.matrix_PvM)
+fit.cont_PvM <- eBayes(fit.cont_PvM)
+dim(fit.cont_PvM)
+summa.fit_PvM<- decideTests(fit.cont_PvM)
+summary(summa.fit_PvM)
+
+#Verifcar expressão diferencial por tresholds
+#Dataset expression
+fit.treat_PvM <- treat(fit.cont_PvM,lfc=log2(1.2))
+res.treat_PvM <- decideTests(fit.treat_PvM)
+summary(res.treat_PvM)
+
+#Gráficos para cada contraste de PvM
+par(mfrow = c(2, 3))
+plotMD(fit.treat_PvM,coef=3,status=res.treat_PvM[,"PMMye"], values = c(-1, 1), hl.col=c("lightblue","red"), main = 'Primary_vs_Metastasis Myeloma')
+plotMD(fit.treat_PvM,coef=4,status=res.treat_PvM[,"PMBrain"], values = c(-1, 1), hl.col=c("lightblue","red"), main = 'Primary_vs_Metastasis Brain')
+plotMD(fit.treat_PvM,coef=5,status=res.treat_PvM[,"PMBone"], values = c(-1, 1), hl.col=c("lightblue","red"), main = 'Primary_vs_Metastasis Bone')
+plotMD(fit.treat_PvM,coef=7,status=res.treat_PvM[,"PMLeuk"], values = c(-1, 1), hl.col=c("lightblue","red"), main = 'Primary_vs_Metastasis Leukemia')
+plotMD(fit.treat_PvM,coef=9,status=res.treat_PvM[,"PMRHA"], values = c(-1, 1), hl.col=c("lightblue","red"), main = 'Primary_vs_Metastasis Rhaboid')
+plotMD(fit.treat_PvM,coef=10,status=res.treat_PvM[,"PMBREA"], values = c(-1, 1), hl.col=c("lightblue","red"), main = 'Primary_vs_Metastasis Breast')
+plotMD(fit.treat_PvM,coef=15,status=res.treat_PvM[,"PMLIVER"], values = c(-1, 1), hl.col=c("lightblue","red"), main = 'Primary_vs_Metastasis Liver')
+plotMD(fit.treat_PvM,coef=17,status=res.treat_PvM[,"PMColon"], values = c(-1, 1), hl.col=c("lightblue","red"), main = 'Primary_vs_Metastasis Colon')
+plotMD(fit.treat_PvM,coef=18,status=res.treat_PvM[,"PMEYE"], values = c(-1, 1), hl.col=c("lightblue","red"), main = 'Primary_vs_Metastasis Eye')
+plotMD(fit.treat_PvM,coef=20,status=res.treat_PvM[,"PMLYMPH"], values = c(-1, 1), hl.col=c("lightblue","red"), main = 'Primary_vs_Metastasis Lymphoma')
+plotMD(fit.treat_PvM,coef=24,status=res.treat_PvM[,"PMNeur"], values = c(-1, 1), hl.col=c("lightblue","red"), main = 'Primary_vs_Metastasis Neuroblastoma')
+```
+
+Como resultados nos vários contrastes existe uma pequena diferença de genes que mantém diferenças significativas a nível de expressão, os genes de interesse para estes casos são só genes que se encontram *up regulated* uma vez que serão genes que estarão mais expressos na fase primária e por isso um gene com importância para a sobrevivência do cancro na fase inicial.
+
+Com estes genes foi realizado a Análise de Enriquecimento para as comparações.
+
+
+### Análise de enriquecimento
+
+
+```{r, warning = FALSE, class.output="scroll-100"}
+goPMye <-goana(fit.treat_PvM, coef="PMMye",species = "Hs", geneid=fit.treat_PvM$genes)
+topGO(goPMye, n=10, sort = 'Up')
+ 
+goPMBrain <- goana(fit.treat_PvM, coef="PMBrain",species = "Hs", geneid=fit.treat_PvM$genes)
+topGO(goPMBrain, n=10, sort = 'Up')
+
+goPMBone <-goana(fit.treat_PvM, coef="PMBone",species = "Hs", geneid=fit.treat_PvM$genes)
+topGO(goPMBone, n=10, sort = 'Up')
+
+
+goPMLeuk <- goana(fit.treat_PvM, coef="PMLeuk",species = "Hs", geneid = fit.treat_PvM$genes)
+topGO(goPMLeuk, n=10, sort = 'Up')
+ 
+goPMRHA <- goana(fit.treat_PvM, coef="PMRHA",species = "Hs", geneid=fit.treat_PvM$genes)
+topGO(goPMRHA, n=10, sort = 'Up')
+
+goPMBREA <-goana(fit.treat_PvM, coef="PMBREA",species = "Hs", geneid=fit.treat_PvM$genes)
+topGO(goPMBREA, n=10, sort = 'Up')
+
+goPMLIVER <- goana(fit.treat_PvM, coef="PMLIVER",species = "Hs", geneid = fit.treat_PvM$genes)
+topGO(goPMLIVER, n=10, sort = 'Up')
+
+goPMColon <- goana(fit.treat_PvM, coef="PMColon",species = "Hs", geneid = fit.treat_PvM$genes)
+topGO(goPMColon, n=10, sort = 'Up')
+
+goPMEYE <- goana(fit.treat_PvM, coef="PMEYE",species = "Hs", geneid = fit.treat_PvM$genes)
+topGO(goPMEYE, n=10, sort = 'Up')
+
+goPMLYMPH <- goana(fit.treat_PvM, coef="PMLYMPH",species = "Hs", geneid = fit.treat_PvM$genes)
+topGO(goPMLYMPH, n=10, sort = 'Up')
+
+goPMNeur <- goana(fit.treat_PvM, coef="PMNeur",species = "Hs", geneid = fit.treat_PvM$genes)
+topGO(goPMNeur, n=10, sort = 'Up')
+
+```
+
+**Cancro dos Ossos Primário vs Metastásico**
+No cancro dos **Ossos** foram encontrados genes associados **desenvolvimento celular**, **transporte de lipídios para o meio intracelular** e **aumento da fase anafásica/metafasica**.
+
+**Cancro Cerebral Primário vs Metastásico**
+No cancro **Cerebral** foram encontrados genes associados ao **controlo da apoptose celular a partir das Caspases**, **ligação a antigénio (impedindo resposta imune)** , **processos que param o processo de apoptose pelo reticulo endoplasmático**.
+
+**Cancro Mamário primário vs Metastásico**
+No cancro **Mamário**  foram encontrados genes associados **proliferação celular**, **adesão celular e favorecendo da interação célula-célula** e **aumento da taxa de produção de aminoácidos**. 
+
+**Cancro da bexiga Primário vs Metastásico**
+No cancro da **Bexiga** foram encontrados genes associados a **regulação e degradação de ácidos gordos** e de **transporte de lipídios intracelularmente**.
+
+**Cancro ocular Primário vs Metastásico**
+No cancro **ocular** foram encontrados genes associados ao **controlo da apoptose celular a partir das Caspases**, **ligação a antigénio (impedindo resposta imune)** , **inibição do processo de apoptose do reticulo endoplasmático**.
+
+**Leucemia Primário vs Metastásico**
+Na **Leucemia** foram encontrados genes associados ao aumento **da regulação de vários recetores extracelulares**, **endocitose** e **anabolismo aminoácidico** .
+
+**Cancro do Fígado Primário vs Metastásico **
+No cancro do **Fígado** foram encontrados genes associados **à catalisação de reações de CoA e de Piruvato**.
+
+**Linfoma Primário vs Metastásico**
+No **Linfoma** foram encontrados genes associados à **locomoção celular (formação de Cília) ** ,  **diferenciação celular** e **inibição do sistema imunitário**.
+
+**Mieloma Tecido Primário vs Metastásico**
+No **Mieloma** foram encontrados genes associados a processos **de ativação do ciclo celular**, **previnem respostas de inflamação** , **ligações a recetores responsáveis por estimulação da proliferação e diferenciação celular**.
+
+**Neuroblastoma Primário vs Metastásico**
+O **Neuroblastoma** foram encontrados genes associados **a ações enzimáticas** e a **reações anabólicas de metabolitos, tais como citina 5’-trifosfato**.
+
+**Rabdóide Primário vs Metastásico**
+No **Rabdóide** foram encontrados genes associados ao **crescimento e desenvolvimento celular**, **modificação da  produção de enzimas secreção**  e **alteração da expressão genética**.
+
+
+### 2º matriz de contrastes
+A segunda matriz realiza as comparações entre todos tipos de cancro, realizando sempre uma espécie de *one vs all*. A segunda matriz foi construída a descobrir os genes se encontravam mais frequentemente *overexpressed* em um tecido em relação a todos os cancros restantes.
+Desta forma foi apenas usado apenas o grupo dividindo o dataset por tecido sem consideração da fase de carcinoma.
+
+```{r, warning = FALSE, class.output="scroll-100"}
+group2 <- factor((paste(Sample_Info$primary_disease)))
+table(group2)
+#Design y
+design_y2 <- model.matrix(~ 0 + group2)
+colnames(design_y2) <- levels(group2)
+
+#model fit para  e y
+fit_y2 <- lmFit(inv_CCLE_expression1,design_y2)
+
+#Annotation
+ann1 <-AnnotationDbi:: select(org.Hs.eg.db,keys=rownames(fit_y2),columns=c("ENTREZID","SYMBOL","GENENAME"),keytype="SYMBOL")
+ann4 <- ann1[ann1[!is.na(ann1)],]
+m = match(rownames(fit_y2),ann$SYMBOL)
+fit_y2$genes = m
+
+#Matrizes com as comparações a realizar
+cont.matrix_linhage <- makeContrasts(LunBla = Lung_Cancer - Bladder_Cancer , LunBrea = Lung_Cancer - Breast_Cancer ,LunEso = Lung_Cancer - Esophageal_Cancer ,
+                                     LunKid = Lung_Cancer - Kidney_Cancer ,LunLym = Lung_Cancer - Lymphoma ,LunPanc = Lung_Cancer - Pancreatic_Cancer ,
+                                     LunThyr = Lung_Cancer - Thyroid_Cancer,LunBile = Lung_Cancer - Bile_Duct_Cancer ,
+                                     LunCer = Lung_Cancer - Cervical_Cancer ,LunEye = Lung_Cancer - Eye_Cancer ,LunLeuk = Lung_Cancer - Leukemia ,
+                                     LunMye = Lung_Cancer - Myeloma,LunRhab = Lung_Cancer - Rhabdoid, LunSar = Lung_Cancer - Sarcoma, 
+                                     LunSkin = Lung_Cancer - Skin_Cancer, LunBone = Lung_Cancer - Bone_Cancer, LunBrain = Lung_Cancer - Brain_Cancer, 
+                                     LunColon = Lung_Cancer - Colon_Colorectal_Cancer, LunEndo = Lung_Cancer - Endometrial_Uterine_Cancer, LunGas = Lung_Cancer - Gastric_Cancer,
+                                    LunHead = Lung_Cancer - Head_and_Neck_Cancer, LunLiver = Lung_Cancer - Liver_Cancer, LunNeuro = Lung_Cancer - Neuroblastoma,
+                                    LunOvar = Lung_Cancer - Ovarian_Cancer, BileBlad = Bile_Duct_Cancer - Bladder_Cancer, BileBone = Bile_Duct_Cancer - Bone_Cancer, BileBrain = Bile_Duct_Cancer - Brain_Cancer
+                                    , BileBreast = Bile_Duct_Cancer - Breast_Cancer, BileCerv = Bile_Duct_Cancer - Cervical_Cancer, BileColo = Bile_Duct_Cancer - Colon_Colorectal_Cancer,
+                                    BileEndo = Bile_Duct_Cancer - Endometrial_Uterine_Cancer, BileEsoph = Bile_Duct_Cancer - Esophageal_Cancer, BileEye = Bile_Duct_Cancer - Eye_Cancer,
+                                    BileGast = Bile_Duct_Cancer - Gastric_Cancer, BileHead = Bile_Duct_Cancer - Head_and_Neck_Cancer, BileKid = Bile_Duct_Cancer - Kidney_Cancer, BileLeuk = Bile_Duct_Cancer - Leukemia,
+                                    BileLiver = Bile_Duct_Cancer - Liver_Cancer, BileLym = Bile_Duct_Cancer - Lymphoma, BileMyel = Bile_Duct_Cancer - Myeloma, BileNeuro = Bile_Duct_Cancer - Neuroblastoma,
+                                    BileOvar = Bile_Duct_Cancer - Ovarian_Cancer, BilePancre = Bile_Duct_Cancer - Pancreatic_Cancer, BileRhab = Bile_Duct_Cancer - Rhabdoid, BileSarc = Bile_Duct_Cancer - Sarcoma,
+                                    BileSkin = Bile_Duct_Cancer - Skin_Cancer, BileThyr = Bile_Duct_Cancer - Thyroid_Cancer, BladBone = Bladder_Cancer - Bone_Cancer, BladBrain = Bladder_Cancer - Brain_Cancer, BladBreas = Bladder_Cancer - Breast_Cancer,
+                                    BladCerv = Bladder_Cancer - Cervical_Cancer, BladColon = Bladder_Cancer - Colon_Colorectal_Cancer, BladEndo = Bladder_Cancer - Endometrial_Uterine_Cancer, BladEsoph = Bladder_Cancer - Esophageal_Cancer,
+                                    BladEye = Bladder_Cancer - Eye_Cancer, BladGastr = Bladder_Cancer - Gastric_Cancer, BladHead = Bladder_Cancer - Head_and_Neck_Cancer, BladKidn = Bladder_Cancer - Kidney_Cancer, BladLeuk = Bladder_Cancer - Leukemia, BladLive = Bladder_Cancer - Liver_Cancer, 
+                                    BladLymp = Bladder_Cancer - Lymphoma, BladMyel = Bladder_Cancer - Myeloma, BladNeurob = Bladder_Cancer - Neuroblastoma, BladOvar = Bladder_Cancer - Ovarian_Cancer, BladPanc = Bladder_Cancer - Pancreatic_Cancer, BladRha = Bladder_Cancer - Rhabdoid, BladSarc = Bladder_Cancer - Sarcoma,
+                                    BladSkin = Bladder_Cancer - Skin_Cancer, BladThyr = Bladder_Cancer - Thyroid_Cancer, BoneBrain = Bone_Cancer - Brain_Cancer, BoneBreas = Bone_Cancer - Breast_Cancer, BoneCerv = Bone_Cancer - Cervical_Cancer, BoneColon = Bone_Cancer - Colon_Colorectal_Cancer, BoneEndo = Bone_Cancer - Endometrial_Uterine_Cancer, BoneEsop = Bone_Cancer - Esophageal_Cancer,
+                                    BoneEye = Bone_Cancer - Eye_Cancer, BoneGast = Bone_Cancer - Gastric_Cancer, BoneHead = Bone_Cancer - Head_and_Neck_Cancer, BoneKid = Bone_Cancer - Kidney_Cancer, BoneLeuk = Bone_Cancer - Leukemia, BoneLive = Bone_Cancer - Liver_Cancer, BoneLymp = Bone_Cancer - Lymphoma, BoneMye = Bone_Cancer - Myeloma, BoneNeuro = Bone_Cancer - Neuroblastoma, BoneOvar = Bone_Cancer - Ovarian_Cancer,
+                                    BonePanc = Bone_Cancer - Pancreatic_Cancer, BoneRha = Bone_Cancer - Rhabdoid, BoneSarc = Bone_Cancer - Sarcoma, BoneSkin = Bone_Cancer - Skin_Cancer, BoneThyr = Bone_Cancer - Thyroid_Cancer, BrainBreas = Brain_Cancer - Breast_Cancer, BrainCerv = Brain_Cancer - Cervical_Cancer, BrainColon = Brain_Cancer - Colon_Colorectal_Cancer, BrainEndo = Brain_Cancer - Endometrial_Uterine_Cancer, BrainEsoph = Brain_Cancer - Esophageal_Cancer,
+                                    BrainEye = Brain_Cancer - Eye_Cancer, BrainGast = Brain_Cancer - Gastric_Cancer, BrainHead = Brain_Cancer - Head_and_Neck_Cancer, BrainKid = Brain_Cancer - Kidney_Cancer, BrainLeuk = Brain_Cancer - Leukemia, BrainLiver = Brain_Cancer - Liver_Cancer, BrainLym = Brain_Cancer - Lymphoma, BrainMye = Brain_Cancer - Myeloma, BrainNeuro = Brain_Cancer - Neuroblastoma, BrainOvar = Brain_Cancer - Ovarian_Cancer, BrainPanc = Brain_Cancer - Pancreatic_Cancer,
+                                    BrainRha = Brain_Cancer - Rhabdoid, BrainSarc = Brain_Cancer -Sarcoma, BrainSkin = Brain_Cancer - Skin_Cancer, BrainThy = Brain_Cancer - Thyroid_Cancer,
+                                    BreastCerv = Breast_Cancer - Cervical_Cancer, BreastColon = Breast_Cancer - Colon_Colorectal_Cancer, BreastEndo = Breast_Cancer - Endometrial_Uterine_Cancer, BreastEsoph = Breast_Cancer - Esophageal_Cancer, BreastEye = Breast_Cancer - Eye_Cancer, BreastGastr = Breast_Cancer - Gastric_Cancer, BreastHead = Breast_Cancer - Head_and_Neck_Cancer, BreastKid = Breast_Cancer - Kidney_Cancer, BreastLeuk = Breast_Cancer - Leukemia, BreastLiver = Breast_Cancer - Liver_Cancer,
+                                    BreastPanc = Breast_Cancer - Pancreatic_Cancer, BreastRhab = Breast_Cancer - Rhabdoid, BreastSarc = Breast_Cancer - Sarcoma, BreastSkin = Breast_Cancer - Skin_Cancer, BreastThy = Breast_Cancer - Thyroid_Cancer, CervColon = Cervical_Cancer - Colon_Colorectal_Cancer, CervEndo = Cervical_Cancer - Endometrial_Uterine_Cancer, CervEsoph = Cervical_Cancer - Esophageal_Cancer,CervEye = Cervical_Cancer - Eye_Cancer, CervGast = Cervical_Cancer - Gastric_Cancer, CervHead = Cervical_Cancer - Head_and_Neck_Cancer,
+                                    CervKid = Cervical_Cancer - Kidney_Cancer, CervLeuk = Cervical_Cancer - Leukemia, CervLiver = Cervical_Cancer - Liver_Cancer, CervLym = Cervical_Cancer - Lymphoma, CervMye = Cervical_Cancer - Myeloma, CervNeuro = Cervical_Cancer - Neuroblastoma, CervOvari = Cervical_Cancer - Ovarian_Cancer, CervPanc = Cervical_Cancer - Pancreatic_Cancer, CervRhab = Cervical_Cancer - Rhabdoid, CervSarc = Cervical_Cancer - Sarcoma, CervSkin = Cervical_Cancer - Skin_Cancer, CervThy = Cervical_Cancer - Thyroid_Cancer, ColonEndo = Colon_Colorectal_Cancer - Endometrial_Uterine_Cancer,
+                                    ColonEsoph = Colon_Colorectal_Cancer - Esophageal_Cancer, ColonEye = Colon_Colorectal_Cancer - Eye_Cancer, ColonGast = Colon_Colorectal_Cancer - Gastric_Cancer, ColonHead = Colon_Colorectal_Cancer - Head_and_Neck_Cancer, ColonKid = Colon_Colorectal_Cancer - Kidney_Cancer, ColonLeuk = Colon_Colorectal_Cancer - Leukemia, ColonLiver = Colon_Colorectal_Cancer - Liver_Cancer, ColonLym = Colon_Colorectal_Cancer - Lymphoma, ColonMye = Colon_Colorectal_Cancer - Myeloma, ColonNeuro = Colon_Colorectal_Cancer - Neuroblastoma,
+                                    ColonOvari = Colon_Colorectal_Cancer - Ovarian_Cancer, ColonPanc = Colon_Colorectal_Cancer - Pancreatic_Cancer, ColonRhab = Colon_Colorectal_Cancer - Rhabdoid, ColonSarc = Colon_Colorectal_Cancer - Sarcoma, ColonSkin = Colon_Colorectal_Cancer - Skin_Cancer, ColonThy = Colon_Colorectal_Cancer - Thyroid_Cancer,
+                                    EndoEsoph = Endometrial_Uterine_Cancer - Esophageal_Cancer, EndoEye = Endometrial_Uterine_Cancer - Eye_Cancer, EndoGast = Endometrial_Uterine_Cancer - Gastric_Cancer, EndoHead = Endometrial_Uterine_Cancer - Head_and_Neck_Cancer, EndoKid = Endometrial_Uterine_Cancer - Kidney_Cancer, EndoLeuk = Endometrial_Uterine_Cancer - Leukemia, EndoLiver = Endometrial_Uterine_Cancer - Liver_Cancer,
+                                    EndoLym = Endometrial_Uterine_Cancer - Lymphoma, EndoMye = Endometrial_Uterine_Cancer - Myeloma, EndoNeur = Endometrial_Uterine_Cancer - Neuroblastoma, EndoOvar = Endometrial_Uterine_Cancer - Ovarian_Cancer, EndoPanc = Endometrial_Uterine_Cancer - Pancreatic_Cancer, EndoRhab = Endometrial_Uterine_Cancer - Rhabdoid, EndoSarc = Endometrial_Uterine_Cancer - Sarcoma, EndoSkin = Endometrial_Uterine_Cancer - Skin_Cancer, EndoThy = Endometrial_Uterine_Cancer - Thyroid_Cancer,
+                                    EsophEye = Esophageal_Cancer - Eye_Cancer, EsophGast = Esophageal_Cancer - Gastric_Cancer, EsophHead = Esophageal_Cancer - Head_and_Neck_Cancer, EsophKid = Esophageal_Cancer - Kidney_Cancer, EsophLeuk = Esophageal_Cancer - Leukemia, EsophLiver = Esophageal_Cancer - Liver_Cancer, EsophLym = Esophageal_Cancer - Lymphoma, EsophMye = Esophageal_Cancer - Myeloma, EsophNeuro = Esophageal_Cancer - Neuroblastoma, EsophOvar = Esophageal_Cancer - Ovarian_Cancer, EsophPanc = Esophageal_Cancer - Pancreatic_Cancer, EsophRhab = Esophageal_Cancer - Rhabdoid,
+                                    EsophSarc = Esophageal_Cancer - Sarcoma, EsophSkin = Esophageal_Cancer - Skin_Cancer, EsophThy = Esophageal_Cancer - Thyroid_Cancer, EyeGast = Eye_Cancer - Gastric_Cancer, EyeHead = Eye_Cancer - Head_and_Neck_Cancer, EyeKid = Eye_Cancer - Kidney_Cancer, EyeLeuk = Eye_Cancer - Leukemia, EyeLiver = Eye_Cancer - Liver_Cancer, EyeLym = Eye_Cancer - Lymphoma, EyeMye = Eye_Cancer - Myeloma, EyeNeur = Eye_Cancer - Neuroblastoma, EyeOvar = Eye_Cancer - Ovarian_Cancer, EyePanc = Eye_Cancer - Pancreatic_Cancer, EyeRhab = Eye_Cancer - Rhabdoid, EyeSarc = Eye_Cancer - Sarcoma, EyeSkin = Eye_Cancer - Skin_Cancer,
+                                    EyeThy = Eye_Cancer - Thyroid_Cancer, GastHead = Gastric_Cancer - Head_and_Neck_Cancer,GastKid = Gastric_Cancer - Kidney_Cancer, GastLeuk = Gastric_Cancer - Leukemia, GastLiver = Gastric_Cancer - Liver_Cancer, GastLym = Gastric_Cancer - Lymphoma, GastMye = Gastric_Cancer - Myeloma, GastNeur = Gastric_Cancer - Neuroblastoma, GastOvar = Gastric_Cancer - Ovarian_Cancer, GastPanc = Gastric_Cancer - Pancreatic_Cancer, GastRhab = Gastric_Cancer - Rhabdoid, GastSarc = Gastric_Cancer - Sarcoma, GastSkin = Gastric_Cancer - Skin_Cancer, GastThy = Gastric_Cancer - Thyroid_Cancer,
+                                    HeadKid = Head_and_Neck_Cancer - Kidney_Cancer, HeadLeuk = Head_and_Neck_Cancer - Leukemia, HeadLiver = Head_and_Neck_Cancer - Liver_Cancer, HeadLym = Head_and_Neck_Cancer - Lymphoma, HeadMye = Head_and_Neck_Cancer - Myeloma, HeadNeur = Head_and_Neck_Cancer - Neuroblastoma, HeadOvar = Head_and_Neck_Cancer - Ovarian_Cancer, HeadPanc = Head_and_Neck_Cancer - Pancreatic_Cancer, HeadRhab = Head_and_Neck_Cancer - Rhabdoid, HeadSarc = Head_and_Neck_Cancer - Sarcoma, HeadSkin = Head_and_Neck_Cancer - Skin_Cancer, HeadThy = Head_and_Neck_Cancer - Thyroid_Cancer,
+                                    KidLeuk = Kidney_Cancer - Leukemia, KidLiver = Kidney_Cancer - Liver_Cancer, KidLym = Kidney_Cancer - Lymphoma, KidMye = Kidney_Cancer - Myeloma, KidNeur = Kidney_Cancer - Neuroblastoma, KidOvar = Kidney_Cancer - Ovarian_Cancer, KidPanc = Kidney_Cancer - Pancreatic_Cancer, KidRhab = Kidney_Cancer - Rhabdoid, KidSarc = Kidney_Cancer - Sarcoma, KidSkin = Kidney_Cancer - Skin_Cancer, KidThy = Kidney_Cancer - Thyroid_Cancer,
+                                    LeukLiver = Leukemia - Liver_Cancer, LeukLym = Leukemia - Lymphoma, LeukMye = Leukemia - Myeloma, LeukNeur = Leukemia - Neuroblastoma, LeukOvar = Leukemia - Ovarian_Cancer, LeukPanc = Leukemia - Pancreatic_Cancer, LeukRhab = Leukemia - Rhabdoid, LeukSarc = Leukemia - Sarcoma, LeukSkin = Leukemia - Skin_Cancer, LeukThy = Leukemia - Thyroid_Cancer,
+                                    LiverLym = Liver_Cancer - Lymphoma, LiverMye = Liver_Cancer - Myeloma, LiverNeur = Liver_Cancer - Neuroblastoma, LiverOvar = Liver_Cancer - Ovarian_Cancer, LiverPanc = Liver_Cancer - Pancreatic_Cancer, LiverRhab = Liver_Cancer - Rhabdoid, LiverSar = Liver_Cancer - Sarcoma, LiverSkin = Liver_Cancer - Skin_Cancer, LiverThy = Liver_Cancer - Thyroid_Cancer,
+                                    LymMye = Lymphoma - Myeloma,LymNeur = Lymphoma - Neuroblastoma, LymOvar = Lymphoma - Ovarian_Cancer, LymPanc = Lymphoma - Pancreatic_Cancer, LymRhab = Lymphoma - Rhabdoid, LymSarc = Lymphoma - Sarcoma, LymSkin = Lymphoma - Skin_Cancer, LymThy = Lymphoma - Thyroid_Cancer, MyeNeur = Myeloma - Neuroblastoma, MyeOvar = Myeloma - Ovarian_Cancer, MyePanc = Myeloma - Pancreatic_Cancer,MyeRhab = Myeloma - Rhabdoid , MyeSarc = Myeloma - Sarcoma, MyeSkin = Myeloma - Skin_Cancer, MyeThy = Myeloma - Thyroid_Cancer,
+                                    NeurOvar = Neuroblastoma - Ovarian_Cancer, NeurPanc = Neuroblastoma - Pancreatic_Cancer, NeurRhab = Neuroblastoma - Rhabdoid, NeurSarc = Neuroblastoma - Sarcoma, NeurSkin = Neuroblastoma - Skin_Cancer, NeurThy = Neuroblastoma - Thyroid_Cancer,
+                                    OvarPanc = Ovarian_Cancer- Pancreatic_Cancer, OvarRhab = Ovarian_Cancer - Rhabdoid, OvarSarc = Ovarian_Cancer - Sarcoma, OvarSkin = Ovarian_Cancer - Skin_Cancer, OvarThy = Ovarian_Cancer - Thyroid_Cancer,
+                                    PancRhab = Pancreatic_Cancer - Rhabdoid, PancSarc = Pancreatic_Cancer - Sarcoma, PancSkin = Pancreatic_Cancer - Skin_Cancer, PancThy = Pancreatic_Cancer - Thyroid_Cancer,
+                                    RhabSarc = Rhabdoid - Sarcoma, RhabSkin = Rhabdoid - Skin_Cancer, RhabThy = Rhabdoid - Thyroid_Cancer, SarcSkin = Sarcoma - Skin_Cancer, SarcThy = Sarcoma - Thyroid_Cancer, SkinThy = Skin_Cancer - Thyroid_Cancer
+                                    ,levels=design_y2)
+
+
+#Implementar o modelo fit às condições definidas
+fit.cont_ML <- contrasts.fit(fit_y2,cont.matrix_linhage)
+fit.cont_ML <- eBayes(fit.cont_ML)
+dim(fit.cont_ML)
+summa.fit_ML<- decideTests(fit.cont_ML)
+summary(summa.fit_ML)
+
+fit.treat_ML <- treat(fit.cont_ML,lfc=log2(1.5))
+res.treat_ML <- decideTests(fit.treat_ML)
+summary(res.treat_ML)
+
+par(mfrow = c(2, 4))
+plotMD(fit.treat_ML,coef=11,status=res.treat_ML[,"LunLeuk"], values = c(-1, 1), hl.col=c("lightblue","red"), main = 'Lung vs Leukemia ')
+plotMD(fit.treat_ML,coef=39,status=res.treat_ML[,"BileLym"], values = c(-1, 1), hl.col=c("lightblue","red"), main = 'Bile vs Lymphoma ')
+plotMD(fit.treat_ML,coef=62,status=res.treat_ML[,"BladMyel"], values = c(-1, 1), hl.col=c("lightblue","red"), main = 'Bladder vs Myeloma ')
+plotMD(fit.treat_ML,coef=82,status=res.treat_ML[,"BoneLymp"], values = c(-1, 1), hl.col=c("lightblue","red"), main = 'Bone vs Lymphoma ')
+plotMD(fit.treat_ML,coef=104,status=res.treat_ML[,"BrainNeuro"], values = c(-1, 1), hl.col=c("lightblue","red"), main = 'Brain vs Neuroblastoma ')
+plotMD(fit.treat_ML,coef=122,status=res.treat_ML[,"BreastRhab"], values = c(-1, 1), hl.col=c("lightblue","red"), main = 'Breast vs Rhaboid ')
+plotMD(fit.treat_ML,coef=135,status=res.treat_ML[,"CervLym"], values = c(-1, 1), hl.col=c("lightblue","red"), main = 'Cervical vs Lymphoma ')
+plotMD(fit.treat_ML,coef=150,status=res.treat_ML[,"ColonLeuk"], values = c(-1, 1), hl.col=c("lightblue","red"), main = 'Colon_Rectal vs Leukemia ')
+plotMD(fit.treat_ML,coef=166,status=res.treat_ML[,"EndoLeuk"], values = c(-1, 1), hl.col=c("lightblue","red"), main = 'Endometrial vs Leukemia ')
+plotMD(fit.treat_ML,coef=178,status=res.treat_ML[,"EsophGast"], values = c(-1, 1), hl.col=c("lightblue","red"), main = 'Esophageal vs Gastric ')
+plotMD(fit.treat_ML,coef=199,status=res.treat_ML[,"EyeNeur"], values = c(-1, 1), hl.col=c("lightblue","red"), main = 'Eye vs Neuroblastoma ')
+plotMD(fit.treat_ML,coef=209,status=res.treat_ML[,"GastLiver"], values = c(-1, 1), hl.col=c("lightblue","red"), main = 'Gastric vs Liver ')
+plotMD(fit.treat_ML,coef=224,status=res.treat_ML[,"HeadNeur"], values = c(-1, 1), hl.col=c("lightblue","red"), main = 'Head_Neck vs Neuroblastoma ')
+plotMD(fit.treat_ML,coef=231,status=res.treat_ML[,"KidLeuk"], values = c(-1, 1), hl.col=c("lightblue","red"), main = 'Kidney vs Leukemia ')
+plotMD(fit.treat_ML,coef=246,status=res.treat_ML[,"LeukOvar"], values = c(-1, 1), hl.col=c("lightblue","red"), main = 'Leukemia vs Ovary ')
+plotMD(fit.treat_ML,coef=252,status=res.treat_ML[,"LiverLym"], values = c(-1, 1), hl.col=c("lightblue","red"), main = 'Liver vs Lymphoma ')
+plotMD(fit.treat_ML,coef=283,status=res.treat_ML[,"OvarRhab"], values = c(-1, 1), hl.col=c("lightblue","red"), main = 'Ovary vs Rhaboid ')
+
+``` 
+
+Com os resultados pretende-se obter os genes que estão mais frequentemente *over expressed* para as várias comparações no mesmo tecido em comparação. Para os vários tecidos existe um espetro alargado no número de genes que estão *up* ou *downregulated*, verificando que a tendências verificadas no heatmap se mantém, ou seja, cancro de Linfoma, Leucemia e Neuroblastoma.
+
+
+### Análise de enriquecimento
+Para o enriquecimento foram selecionados para cada tecido os 10 genes *overexpressed* que surgiam mais vezes na totalidade de comparações de cada tecido.
+
+**Tecido Pulmonar**
+Para o cancro **Pulmonar** estavam principalmente sobre *overexpressed* genes responsáveis por processos como **crescimento de tecido**, **mediação de macromoléculas**, **manutenção da estrutura celular** e **resposta ao sistema imunitário**.
+
+**Tecido do Ducto Biliar**
+No cancro do **ducto biliar** foram encontrados *overexpressed* genes associados a um **desenvolvimento de estruturas anatómicas, tais como acrossomas ou carpelos ** , **aumento da taxa de comunicação celular** e **atividade de transformação do genoma nuclear**.
+
+**Tecido da bexiga**
+No cancro da **bexiga** foram encontrados *overexpressed* genes associados a um **aumento a taxa de processos catabólicos e anabólicos**, **aumento de catabolismo para obtenção de energia** , **expansão e multiplicação celular, favorecendo a interação entre diferentes estruturas**.
+
+**Tecido cerebral **
+No cancro da **cérebro** foram encontrados genes *overexpressed* associados a um **aumento de processos de catabolismo e/ou anabolismo** , **conversão entre múltiplos metabolitos** , **combinação entre sinais extra e intercelulares** , **geração de estruturas anatómicas celulares** e **pela interação com a corrente sanguínea**.
+
+**Tecido ósseo**
+No cancro **ósseo** foram encontrados genes *overexpressed* associados a **processos responsáveis pela locomoção celular** , **aumento da taxa metabólica** , **formação de células neuronais** e **controlo e modificação de metabolitos** e **à resposta imunitária a Leucócitos**.
+
+**Tecido Mamário**
+No cancro **mamário** foram encontrados genes *overexpressed* associados à **maturação celular**, **desenvolvimento embrional** e **transferência de metabolitos**.
+
+**Tecido Cervical**
+No cancro **cervical** foram encontrados genes *overexpressed* associados ao **aumento da atividade da kinase**, **aumento da frequência do ciclo miótico**, **formação de organelos** e **catalise de ligações peptídicas**.
+
+**Tecido do colon**
+No cancro do **colon** foram encontrados genes *overexpressed* associados a **acelerar o processo de maturação celular e replicação** e **interação entre várias células**.
+
+**Tecido uterino**
+No cancro do **útero** foram encontrados genes *overexpressed* associados a **diminuição da taxa de organelos e metabolitos**, **respostas imunitárias**, **desenvolvimento epitelial** e **catabolização proteica**.
+
+**Tecido Esofágico**
+No cancro **esofágico** foram encontrados genes *overexpressed* associados ao **aumento da taxa de metabolização**, **crecimento celular** e **desenvolvimento celular**.
+
+**Tecido ocular**
+No cancro **ocular** foram encontrados genes *overexpressed* associados ao **movimentação de organelos e metabolitos**, **movimento celular** e **desenvolvimento celular**.
+
+**Tecido estomacal**
+No cancro **estomacal** foram encontrados genes *overexpressed* associados ao **desenvolvimento e maturação celular**, **movimento celular**, **transferência de grupos fosfato e álcool** e **aumento de formação de organelos**.
+
+**Tecido facial**
+No cancro **facial** foram encontrados genes *overexpressed* associados ao **transporte de proteínas**, **atividade recetorial**, **ligação de cromatina** e  **processos de manutenção celular**.
+
+**Tecido renal**
+No cancro **renal** foram encontrados genes *overexpressed* associados ao **aumento de sinalização tranductional**, **degradação de carbonos** , **multiplicação e reprodução celular** e **hidrolise de ligações peptídicas**.
+
+**Leucemia**
+Para a **leucemia** foram encontrados genes *overexpressed* associados ao **movimento intra-celular de iões, catiões …** , **alteração do gene mitocondrial** , **progressão de fases mitóticas** e **ligações proteicas**.
+
+**Tecido do fígado**
+No cancro do **fígado** foram encontrados genes *overexpressed* associados à **modelação do sistema imunitário**, **degradação de terpenoids**, **regulação de radicais livres** e **degradação de moléculas de carbono**.
+
+**Tecido linfático **
+No cancro do **linfático** foram encontrados genes *overexpressed* associados ao **transporte de catiões**, **desenvolvimento de musculo esquelético**, **formação de constituintes da matriz extracelular** e **formação de fosfolípidos**.
+
+**Mieloma**
+No **mieloma** foram encontrados genes *overexpressed* associados a **movimento de moléculas e átomos**, **transporte de protões** e  **transporte e alteração mitocondrial**.
+
+**NeuroBlastoma**
+No **neuroblastoma** foram encontrados genes *overexpressed* associados a **modelação celular**, **processo de formação de complexos proteicos** e **alteração membranal**.
+
+**Tecido Ovárico **
+No cancro do **ovário** foram encontrados genes *overexpressed* associados a **morte celular**, **junção de macromoléculas de modo a alteração celular**, **controlo da GTPase**e **agregação celular**.
+
+
+```{r, warning = FALSE, class.output="scroll-100"}
+
+#Enriquecimento segunda matriz de contraste
+tabLung = data.frame()
+for (i in 1:24){
+GOLung = goana(fit.treat_ML, coef=colnames(summary(res.treat_ML))[i],species = "Hs", geneid=fit.treat_ML$genes)
+LungTAB = topGO(GOLung, n=10, sort = 'up')
+tabLung = rbind(tabLung,LungTAB)
+tabLung = tabLung[!duplicated(tabLung$Term) & tabLung$Ont != 'CC' ,]
+tabLung = tabLung[order(tabLung$N, decreasing = TRUE),]
+}
+EnrLung = tabLung[1:10,]
+
+
+tabBile = data.frame()
+for (i in 25:47){
+GOBile = goana(fit.treat_ML, coef=colnames(summary(res.treat_ML))[i],species = "Hs", geneid=fit.treat_ML$genes)
+BileTAB = topGO(GOBile, n=10, sort = 'up')
+tabBile = rbind(tabBile,BileTAB)
+tabBile = tabBile[!duplicated(tabBile$Term) & tabBile$Ont != 'CC',]
+tabBile = tabBile[order(tabBile$N, decreasing = TRUE),]
+}
+EnrBile = tabBile[1:10,]
+
+tabBlad = data.frame()
+for (i in 48:69){
+GOBlad = goana(fit.treat_ML, coef=colnames(summary(res.treat_ML))[i],species = "Hs", geneid=fit.treat_ML$genes)
+BladTAB = topGO(GOBlad, n=10, sort = 'up')
+tabBlad = rbind(tabBlad,BladTAB)
+tabBlad = tabBlad[!duplicated(tabBlad$Term) & tabBlad$Ont != 'CC',]
+tabBlad = tabBlad[order(tabBlad$N, decreasing = TRUE),]
+}
+EnrBlad = tabBlad[1:10,]
+
+tabBone = data.frame()
+for (i in 70:90){
+GOBone= goana(fit.treat_ML, coef=colnames(summary(res.treat_ML))[i],species = "Hs", geneid=fit.treat_ML$genes)
+BoneTAB = topGO(GOBone, n=10, sort = 'up')
+tabBone = rbind(tabBone,BoneTAB)
+tabBone = tabBone[!duplicated(tabBone$Term) & tabBone$Ont != 'CC',]
+tabBone = tabBone[order(tabBone$N, decreasing = TRUE),]
+}
+EnrBone = tabBone[1:10,]
+
+tabBrain = data.frame()
+for (i in 91:110){
+GOBrain= goana(fit.treat_ML, coef=colnames(summary(res.treat_ML))[i],species = "Hs", geneid=fit.treat_ML$genes)
+BrainTAB = topGO(GOBrain, n=10, sort = 'up')
+tabBrain = rbind(tabBrain,BrainTAB)
+tabBrain = tabBrain[!duplicated(tabBrain$Term) & tabBrain$Ont != 'CC',]
+tabBrain = tabBrain[order(tabBrain$N, decreasing = TRUE),]
+}
+EnrBrain = tabBrain[1:10,]
+
+tabBreast = data.frame()
+for (i in 111:125){
+GOBreast= goana(fit.treat_ML, coef=colnames(summary(res.treat_ML))[i],species = "Hs", geneid=fit.treat_ML$genes)
+BreastTAB = topGO(GOBreast, n=10, sort = 'up')
+tabBreast = rbind(tabBreast,BreastTAB)
+tabBreast = tabBreast[!duplicated(tabBreast$Term) & tabBreast$Ont != 'CC',]
+tabBreast = tabBreast[order(tabBreast$N, decreasing = TRUE),]
+}
+EnrBreast = tabBreast[1:10,]
+
+
+tabCerv = data.frame()
+for (i in 126:143){
+GOCerv= goana(fit.treat_ML, coef=colnames(summary(res.treat_ML))[i],species = "Hs", geneid=fit.treat_ML$genes)
+CervTAB = topGO(GOCerv, n=10, sort = 'up')
+tabCerv = rbind(tabCerv,CervTAB)
+tabCerv = tabCerv[!duplicated(tabCerv$Term) & tabCerv$Ont != 'CC',]
+tabCerv = tabCerv[order(tabCerv$N, decreasing = TRUE),]
+}
+EnrCerv = tabCerv[1:10,]
+
+tabColon = data.frame()
+for (i in 144:160){
+GOColon= goana(fit.treat_ML, coef=colnames(summary(res.treat_ML))[i],species = "Hs", geneid=fit.treat_ML$genes)
+ColonTAB = topGO(GOColon, n=10, sort = 'up')
+tabColon = rbind(tabColon,ColonTAB)
+tabColon = tabColon[!duplicated(tabColon$Term) & tabColon$Ont != 'CC',]
+tabColon = tabColon[order(tabColon$N, decreasing = TRUE),]
+}
+EnrColon = tabColon[1:10,]
+
+tabEndo = data.frame()
+for (i in 161:176){
+GOEndo= goana(fit.treat_ML, coef=colnames(summary(res.treat_ML))[i],species = "Hs", geneid=fit.treat_ML$genes)
+EndoTAB = topGO(GOEndo, n=10, sort = 'up')
+tabEndo= rbind(tabEndo,EndoTAB)
+tabEndo = tabEndo[!duplicated(tabEndo$Term) & tabEndo$Ont != 'CC',]
+tabEndo = tabEndo[order(tabEndo$N, decreasing = TRUE),]
+}
+EnrEndo = tabEndo[1:10,]
+
+tabEso = data.frame()
+for (i in 177:191){
+GOEso= goana(fit.treat_ML, coef=colnames(summary(res.treat_ML))[i],species = "Hs", geneid=fit.treat_ML$genes)
+EsoTAB = topGO(GOEso, n=10, sort = 'up')
+tabEso= rbind(tabEso,EsoTAB)
+tabEso = tabEso[!duplicated(tabEso$Term) & tabEso$Ont != 'CC',]
+tabEso = tabEso[order(tabEso$N, decreasing = TRUE),]
+}
+EnrEso = tabEso[1:10,]
+
+
+tabEye = data.frame()
+for (i in 192:205){
+GOEye= goana(fit.treat_ML, coef=colnames(summary(res.treat_ML))[i],species = "Hs", geneid=fit.treat_ML$genes)
+EyeTAB = topGO(GOEye, n=10, sort = 'up')
+tabEye= rbind(tabEye,EyeTAB)
+tabEye = tabEye[!duplicated(tabEye$Term) & tabEye$Ont != 'CC',]
+tabEye = tabEye[order(tabEye$N, decreasing = TRUE),]
+}
+EnrEye = tabEye[1:10,]
+
+tabGast = data.frame()
+for (i in 206:218){
+GOGast= goana(fit.treat_ML, coef=colnames(summary(res.treat_ML))[i],species = "Hs", geneid=fit.treat_ML$genes)
+GastTAB = topGO(GOGast, n=10, sort = 'up')
+tabGast= rbind(tabGast,GastTAB)
+tabGast = tabGast[!duplicated(tabGast$Term) & tabGast$Ont != 'CC',]
+tabGast = tabGast[order(tabGast$N, decreasing = TRUE),]
+}
+EnrGast = tabGast[1:10,]
+
+tabHead = data.frame()
+for (i in 219:230){
+GOHead= goana(fit.treat_ML, coef=colnames(summary(res.treat_ML))[i],species = "Hs", geneid=fit.treat_ML$genes)
+HeadTAB = topGO(GOHead, n=10, sort = 'up')
+tabHead= rbind(tabHead,HeadTAB)
+tabHead = tabHead[!duplicated(tabHead$Term) & tabHead$Ont != 'CC',]
+tabHead = tabHead[order(tabHead$N, decreasing = TRUE),]
+}
+EnrHead = tabHead[1:10,]
+
+
+tabKid = data.frame()
+for (i in 231:241){
+GOKid= goana(fit.treat_ML, coef=colnames(summary(res.treat_ML))[i],species = "Hs", geneid=fit.treat_ML$genes)
+KidTAB = topGO(GOKid, n=10, sort = 'up')
+tabKid= rbind(tabKid,KidTAB)
+tabKid = tabKid[!duplicated(tabKid$Term) & tabKid$Ont != 'CC',]
+tabKid = tabKid[order(tabKid$N, decreasing = TRUE),]
+}
+EnrKid = tabKid[1:10,]
+
+
+tabLeu = data.frame()
+for (i in 242:251){
+GOLeu= goana(fit.treat_ML, coef=colnames(summary(res.treat_ML))[i],species = "Hs", geneid=fit.treat_ML$genes)
+LeuTAB = topGO(GOLeu, n=10, sort = 'up')
+tabLeu= rbind(tabLeu,LeuTAB)
+tabLeu = tabLeu[!duplicated(tabLeu$Term) & tabLeu$Ont != 'CC',]
+tabLeu = tabLeu[order(tabLeu$N, decreasing = TRUE),]
+}
+EnrLeu = tabLeu[1:10,]
+
+tabLiv = data.frame()
+for (i in 252:260){
+GOLiv= goana(fit.treat_ML, coef=colnames(summary(res.treat_ML))[i],species = "Hs", geneid=fit.treat_ML$genes)
+LivTAB = topGO(GOLiv, n=10, sort = 'up')
+tabLiv= rbind(tabLiv,LivTAB)
+tabLiv = tabLiv[!duplicated(tabLiv$Term) & tabLiv$Ont != 'CC',]
+tabLiv = tabLiv[order(tabLiv$N, decreasing = TRUE),]
+}
+EnrLiv = tabLiv[1:10,]
+
+tabLym = data.frame()
+for (i in 261:268){
+GOLym= goana(fit.treat_ML, coef=colnames(summary(res.treat_ML))[i],species = "Hs", geneid=fit.treat_ML$genes)
+LymTAB = topGO(GOLym, n=10, sort = 'up')
+tabLym= rbind(tabLym,LymTAB)
+tabLym = tabLym[!duplicated(tabLym$Term) & tabLym$Ont != 'CC',]
+tabLym = tabLym[order(tabLym$N, decreasing = TRUE),]
+}
+EnrLym = tabLym[1:10,]
+
+
+tabMye = data.frame()
+for (i in 269:275){
+GOMye= goana(fit.treat_ML, coef=colnames(summary(res.treat_ML))[i],species = "Hs", geneid=fit.treat_ML$genes)
+MyeTAB = topGO(GOMye, n=10, sort = 'up')
+tabMye= rbind(tabMye,MyeTAB)
+tabMye = tabMye[!duplicated(tabMye$Term) & tabMye$Ont != 'CC',]
+tabMye = tabMye[order(tabMye$N, decreasing = TRUE),]
+}
+EnrMye = tabMye[1:10,]
+
+
+tabNeur = data.frame()
+for (i in 276:281){
+GONeur= goana(fit.treat_ML, coef=colnames(summary(res.treat_ML))[i],species = "Hs", geneid=fit.treat_ML$genes)
+NeurTAB = topGO(GONeur, n=10, sort = 'up')
+tabNeur= rbind(tabNeur,NeurTAB)
+tabNeur = tabNeur[!duplicated(tabNeur$Term) & tabNeur$Ont != 'CC',]
+tabNeur = tabNeur[order(tabNeur$N, decreasing = TRUE),]
+}
+EnrNeur = tabNeur[1:10,]
+
+tabOvar = data.frame()
+for (i in 282:286){
+GOOvar= goana(fit.treat_ML, coef=colnames(summary(res.treat_ML))[i],species = "Hs", geneid=fit.treat_ML$genes)
+OvarTAB = topGO(GOOvar, n=10, sort = 'up')
+tabOvar= rbind(tabOvar,OvarTAB)
+tabOvar = tabOvar[!duplicated(tabOvar$Term) & tabOvar$Ont != 'CC',]
+tabOvar = tabOvar[order(tabOvar$N, decreasing = TRUE),]
+}
+EnrOvar = tabOvar[1:10,]
+
+tabPanc = data.frame()
+for (i in 287:290){
+GOPanc= goana(fit.treat_ML, coef=colnames(summary(res.treat_ML))[i],species = "Hs", geneid=fit.treat_ML$genes)
+PancTAB = topGO(GOPanc, n=10, sort = 'up')
+tabPanc= rbind(tabPanc,PancTAB)
+tabPanc = tabPanc[!duplicated(tabPanc$Term) & tabPanc$Ont != 'CC',]
+tabPanc = tabPanc[order(tabPanc$N, decreasing = TRUE),]
+}
+EnrPanc = tabPanc[1:10,]
+
+
+tabRhab = data.frame()
+for (i in 291:293){
+GORhab= goana(fit.treat_ML, coef=colnames(summary(res.treat_ML))[i],species = "Hs", geneid=fit.treat_ML$genes)
+RhabTAB = topGO(GORhab, n=10, sort = 'up')
+tabRhab= rbind(tabRhab,RhabTAB)
+tabRhab = tabRhab[!duplicated(tabRhab$Term) & tabRhab$Ont != 'CC',]
+tabRhab = tabRhab[order(tabRhab$N, decreasing = TRUE),]
+}
+EnrRhab = tabRhab[1:10,]
+
+tabSarc = data.frame()
+for (i in 294:295){
+GOSarc= goana(fit.treat_ML, coef=colnames(summary(res.treat_ML))[i],species = "Hs", geneid=fit.treat_ML$genes)
+SarcTAB = topGO(GOSarc, n=10, sort = 'up')
+tabSarc= rbind(tabSarc,SarcTAB)
+tabSarc = tabSarc[!duplicated(tabSarc$Term)& tabSarc$Ont != 'CC',]
+tabSarc = tabSarc[order(tabSarc$N, decreasing = TRUE),]
+}
+EnrSarc = tabSarc[1:10,]
+
+GOSkin= goana(fit.treat_ML, coef=colnames(summary(res.treat_ML))[296],species = "Hs", geneid=fit.treat_ML$genes)
+tabSkin = topGO(GOSkin, n=10, sort = 'up')
+
+
+```
+
+# Machine Learning
+
+## PCA 
+Para a etapa seguinte, foram selecionados 5 genes que eram sobre expressos para cada tipo de tecido e que confirmavam as condições da média é menor que -1, ou seja, serem estarem classificados no dataset resultante dos *Aquilles_gene* como essenciais para as linhagens celulares. Assim como foram tambem selecionados apenas os genes com CopyNumber acima de 1.3, ou seja, que podem ser classificados como sobre representados no genoma da linhagem celular.
+
+
+```{r, warning = FALSE, class.output="scroll-100"}
+
+#Filtração dos genes pelos UP-regulated obtidos na segunda matriz de contraste
+#Obtenção da do dataset de expression com todos os genes UP-Regulated
+genename = c()
+FDR = 0.05
+for (i in 1:296){
+  coef = colnames(summary(res.treat_ML))[i]
+  fdr.coef <- p.adjust(fit.treat_ML$p.value[,coef], method = "BH")
+  UP = fdr.coef[fdr.coef < FDR & fit.treat_ML$coefficients[,coef] > 0]
+  UP = sort(UP,decreasing = TRUE)[1:5]
+  genename = append(genename, names(UP))
+}
+genename = genename[!duplicated(genename)]
+
+Sub_CCLE_expression_UP = Sub_CCLE_expression1[,intersect(colnames(Sub_CCLE_expression1),genename)]
+CopyNumber_UP = CopyNumber[,intersect(colnames(CopyNumber),genename)]
+Crispr_UP = Crispr[,intersect(colnames(Crispr),genename)]
+
+#Filtração do dataset  Expression com todos os genes UP-Regulated e com atividade cas-9 negativa ( mais essenciais)
+Genes_Ca9 = c()
+FDR = 0.05
+for (i in 1:296){
+  coef = colnames(summary(res.treat_ML))[i]
+  nv = sapply(seq(from=1, to=nchar(coef), by=3), function(j) substr(coef, j, j+2))
+  indexes = grep(nv[1], Sample_Info$primary_disease)
+  fdr.coef <- p.adjust(fit.treat_ML$p.value[,coef], method = "BH")
+  UP = fdr.coef[fdr.coef < FDR & fit.treat_ML$coefficients[,coef] > 0]
+  cas = Crispr_UP[indexes,intersect(colnames(Crispr_UP),names(UP))]
+  if (ncol(cas) != 0){
+    for (j in 1:ncol(cas)){
+      if (mean(cas[,j]) < 0){
+        Genes_Ca9 = append(Genes_Ca9,colnames(cas)[j])
+      }
+    }
+  }
+}
+Genes_Ca9 = Genes_Ca9[!duplicated(Genes_Ca9)]
+Sub_CCLE_Expression_Cas9 = Sub_CCLE_expression_UP[, intersect(colnames(Sub_CCLE_expression_UP),Genes_Ca9)]
+
+#Filtração do dataset  Expression com todos os genes UP-Regulated e com atividade cas-9 negativa ( mais essenciais)
+Genes_Copy = c()
+FDR = 0.05
+for (i in 1:296){
+  coef = colnames(summary(res.treat_ML))[i]
+  nv = sapply(seq(from=1, to=nchar(coef), by=3), function(j) substr(coef, j, j+2))
+  indexes = grep(nv[1], Sample_Info$primary_disease)
+  fdr.coef <- p.adjust(fit.treat_ML$p.value[,coef], method = "BH")
+  UP = fdr.coef[fdr.coef < FDR & fit.treat_ML$coefficients[,coef] > 0]
+  copy = CopyNumber_UP[indexes,intersect(colnames(CopyNumber_UP),names(UP))]
+  if (ncol(copy) != 0){
+    for (j in 1:ncol(copy)){
+      if (mean(copy[,j]) >= 1.1){
+        Genes_Copy = append(Genes_Copy,colnames(copy)[j])
+      }
+    }
+  }
+}
+Genes_Copy = Genes_Copy[!duplicated(Genes_Copy)]
+Sub_CCLE_Expression_Copy = Sub_CCLE_expression_UP[, intersect(colnames(Sub_CCLE_expression_UP),Genes_Copy)]
+
+
+```
+
+``` {r, warning = FALSE, class.output="scroll-100"}
+
+### Associação quais os essenciais
+
+#Expression
+pcaexp = prcomp(Sub_CCLE_expression_UP)
+summary(pcaexp)
+min(which(summary(pcaexp)$importance[3,]>0.9))
+
+eig.val <- get_eigenvalue(pcaexp)
+fviz_eig(pcaexp, addlabels = TRUE, ylim = c(0, 25), xlim=c(0,20), ncp = 20)
+
+scatterplot3d(pcaexp$x[,1:3], color = as.integer(as.factor(Sample_Info$primary_or_metastasis)), pch=16, xlab="PC1", ylab = "PC2")
+
+autoplot(pcaexp,
+         data = as.data.frame(Sample_Info), 
+         colour="primary_disease", 
+         size=2,
+         main = "PCA Genes Up_regulated")
+autoplot(pcaexp,
+         data = as.data.frame(Sample_Info), 
+         colour="primary_or_metastasis", 
+         size=2,
+         main = "PCA Genes Up_regulated")
+
+
+
+#CopyNumber
+pcagene = prcomp(Sub_CCLE_Expression_Copy)
+summary(pcagene)
+min(which(summary(pcagene)$importance[3,]>0.9))
+
+eig.val <- get_eigenvalue(pcagene)
+fviz_eig(pcagene, addlabels = TRUE, ylim = c(0, 25), xlim=c(0,20), ncp = 20)
+
+scatterplot3d(pcagene$x[,1:3], color = as.integer(as.factor(Sample_Info$primary_or_metastasis)), pch=16, xlab="PC1", ylab = "PC2")
+
+autoplot(pcagene,
+         data = as.data.frame(Sample_Info), 
+         colour="primary_disease", 
+         size=2,
+         main = "PCA Genes Up_regulated w/Copy Number")
+autoplot(pcagene,
+         data = as.data.frame(Sample_Info), 
+         colour="primary_or_metastasis", 
+         size=2,
+         main = "PCA Genes Up_regulated w/Copy Number")
+
+```
+
+No PCA realizado segundo os **dados de expressão** considerando a fase do carcinoma ou a doença principal mostram um **pouco correlação** entre as componentes principais e a distribuição dos vários atributos. Sendo necessário para o PCA com os dados da expressão um total de 151 componentes principais para explicar a variância dos dados. As primeiras 3 componentes principais explicam apenas explicam 32.8% da variância dos dados.
+Para o PCA realizado segundo os dados do **CopyNumber** considerando a fase do carcinoma ou a doença principal tambem mostram um **pouco correlação** entre as componentes principais e a distribuição dos vários atributos. Sendo necessário para o PCA com os dados da expressão um total de **171 componentes principais** para explicar a variância dos dados. As primeiras 3 componentes principais explicam apenas explicam **34.8%** da variância dos dados.
+
+
+
+## Clustering
+O processo de *clustering *realiza o agrupamento de variáveis pela sua similaridade, podendo ser este hierático ou por um problema de otimização de k-means, a qual lhe é dado como parâmetro inicial o número de *clusters* avaliando a melhor posição para o centroide de cada cluster.  Idealmente pretende-se obter a menor distancia entre o cluster e os pontos a que estes pertencem. 
+
+O processo de *clustering * foi realizado para o top 50 dos genes com valor de p mais reduzido segundo a distancia *euclidean*.
+``` {r, warning = FALSE, class.output="scroll-100"}
+
+#Expression
+
+wss = c()
+for (k in 2:7) wss = c(wss, sum(kmeans(Sub_CCLE_expression_UP, centers=k)$withinss) )
+plot(2:7, wss, type="b", xlab="Num Clusters", ylab="WSS")
+
+#Clustering Hierarquico para o top 50 de genes 
+inv = t(Sub_CCLE_expression_UP)
+rownames(inv) <- make.names(rownames(inv), unique = TRUE)
+tt = rowttests(inv)
+rank = order(tt$p.value)
+p50 = rank[1:50]
+Best50 = inv[p50,]
+order_cols = order(Sample_Info$primary_disease)
+Best50 = Best50[,order_cols]
+dist = dist(Best50, method = 'euclidean')
+clust.gene = hclust(dist)
+plot(clust.gene, cex = 0.5)
+dend <- as.dendrogram(clust.gene, cex= 0.5)
+colors_to_use <- as.numeric(as.factor(Sample_Info$primary_or_metastasis))
+colors_to_use <- colors_to_use[order.dendrogram(dend)]
+labels_colors(dend) <- colors_to_use
+dend <- dend %>%set("labels_cex", 0.5) 
+plot(dend, main = "Clustering Expression", cex = 0.5)
+legend("topright", legend = levels(as.factor(Sample_Info$primary_or_metastasis)), cex = 0.8, fill = c("black","red"))
+
+#K-means tendo em conta o o estado do cancro
+kmeans.exp = kmeans(Sub_CCLE_expression_UP, centers = 3, nstart = 1000)
+means_type = table(kmeans.exp$cluster, Sample_Info$primary_or_metastasis)
+barplot(t(means_type), beside=T, col=c("darkslategrey","cyan"), xlab="Clusters", main="Frequência de cada stage por cluster", ylab="Numero de Samples", ylim = c(0,180) )
+legend("topright",legend = levels(as.factor(Sample_Info$primary_or_metastasis)), cex = 0.8 , fill = c("darkslategrey","cyan"))
+
+Clust<-as.data.frame(Sub_CCLE_expression_UP)
+indx <- sapply(Clust, is.factor)
+Clust[indx] <- lapply(Clust[indx], function(x) as.numeric(as.character(x)))
+Clust=cbind(Clust,Sample_Info$primary_or_metastasis)
+names(Clust)[ncol(Clust)] <- 'tumor_stage'
+library(ggfortify)
+par(mfrow=c(2,2))
+k=autoplot(kmeans.exp, data = (Clust), frame = T, main="Plot dos clusters do Kmeans", legendLabs=NULL)
+k+ggplot2::geom_point(aes(pch=Clust$tumor_stage))
+
+
+#CopyNumber
+wss = c()
+for (k in 2:20) wss = c(wss, sum(kmeans(CopyNumber_UP, centers=k)$withinss) )
+plot(2:20, wss, type="b", xlab="Num Clusters", ylab="WSS")
+
+#Clustering Hierarquico para o top 50 de genes 
+inv = t(CopyNumber_UP)
+rownames(inv) <- make.names(rownames(inv), unique = TRUE)
+Copytt = rowttests(inv)
+Copyrank = order(Copytt$p.value)
+Copyp50 = Copyrank[1:50]
+CopyBest50 = inv[Copyp50,]
+Copyorder_cols = order(Sample_Info$primary_disease)
+CopyBest50 = CopyBest50[,Copyorder_cols]
+Copydist = dist(CopyBest50, method = 'euclidean')
+Copyclust.gene = hclust(Copydist)
+plot(Copyclust.gene, cex = 0.5)
+dendCopy <- as.dendrogram(Copyclust.gene, cex= 0.5)
+colors_to_useCopy <- as.numeric(as.factor(Sample_Info$primary_or_metastasis))
+colors_to_useCopy <- colors_to_useCopy[order.dendrogram(dendCopy)]
+labels_colors(dendCopy) <- colors_to_useCopy
+dendCopy <- dendCopy %>%set("labels_cex", 0.5) 
+plot(dendCopy, main = "Clustering Copy Number", cex = 0.5)
+legend("topright", legend = levels(as.factor(Sample_Info$primary_or_metastasis)), cex = 0.8, fill = c("black","red"))
+
+
+#K-means tendo em conta o o estado do cancro
+Copykmeans.exp = kmeans(CopyNumber_UP, centers = 3, nstart = 1000)
+Copymeans_type = table(Copykmeans.exp$cluster, Sample_Info$primary_or_metastasis)
+barplot(t(Copymeans_type), beside=T, col=c("darkslategrey","cyan"), xlab="Clusters", main="Frequência de cada stage por cluster", ylab="Numero de Samples", ylim = c(0,180) )
+legend("topright",legend = levels(as.factor(Sample_Info$primary_or_metastasis)), cex = 0.8 , fill = c("darkslategrey","cyan"))
+
+CopyClust<-as.data.frame(CopyNumber_UP)
+Copyindx <- sapply(CopyClust, is.factor)
+CopyClust[Copyindx] <- lapply(Clust[Copyindx], function(x) as.numeric(as.character(x)))
+CopyClust=cbind(CopyClust,Sample_Info$primary_or_metastasis)
+names(CopyClust)[ncol(CopyClust)] <- 'tumor_stage'
+
+par(mfrow=c(2,2))
+k=autoplot(Copykmeans.exp, data = (CopyClust), frame = T, main="Plot dos clusters do Kmeans", legendLabs=NULL)
+k+ggplot2::geom_point(aes(pch=CopyClust$tumor_stage))
+
+
+
+
+```
+
+Após realizar o *clustering* foi possível verificar que as variáveis não se conseguiam distribuir separamente nos vários *clusters*, não obtendo nenhum dos *clustering* testados as variáveis separados nos dendrogramas. Apesar de ter sido modificado o número de *clusters* finais assim como a medida de distância. 
+
+## Machine Learning
+O dataset obtido foi dividido na proporção de 70% treino e 30% teste, com esta abordagem pretendemos treinar os diferentes tipos de modelos com o dataset treino e prever a *accuracy* do modelo através do dataset de teste. Com a abordagem pretendemos de treinar modelos de modo a prever do gene mais essencial para a linhagem celular em questão através da alimentação dos valores de expressão ou de valores do número de copias dos genes. Para esta fosse foram testadas várias abordagens de forma a obter os melhores modelos possíveis.
+O gene mais essencial para cada linhagem celular foi obtido através da seleção do gene com o valor mais negativo no dataset resultante do *Aquilles_gene*. Foram mantidos 3 modelos, o **SVM, LDA e arvore de regressão**.
+
+``` {r, warning = FALSE, class.output="scroll-100"}
+
+Min_Cas9_Gene = c()
+for (i in 1:598){
+  k = min(Crispr[i,])
+  Min_Cas9_Gene = append(Min_Cas9_Gene, colnames(Crispr)[which(Crispr[i,] == k)])
+}
+
+
+Min_Cas9_Gene
+
+#Expression
+EX = cbind(Sub_CCLE_expression_UP, Min_Cas9_Gene)
+ordem = sample(nrow(EX))
+tam_treino = 0.7 * nrow(EX)
+ind_tr = ordem[1:tam_treino]
+ind_ts = ordem[(tam_treino+1):nrow(EX)]
+EX_train = EX[ind_tr,]
+EX_test = EX[ind_ts,]
+table(EX_train$Min_Cas9_Gene)
+table(EX_test$Min_Cas9_Gene)
+EX_train$Min_Cas9_Gene = factor(EX_train$Min_Cas9_Gene)
+EX_test$Min_Cas9_Gene = factor(EX_test$Min_Cas9_Gene)
+
+
+control <- trainControl(method="repeatedcv", number=10, repeats=3)
+seed <- 7
+
+# PLS-DA
+set.seed(seed)
+fit.lda <- train(Min_Cas9_Gene~., data=EX, method="lda", metric="Accuracy", preProc=c("center", "scale"), trControl=control)
+
+# SVM 
+set.seed(seed)
+fit.svmRadial <- train(Min_Cas9_Gene~., data=EX, method="svmRadial", metric="Accuracy", preProc=c("center", "scale"), trControl=control, fit=FALSE)
+
+
+# Tree
+set.seed(seed)
+fit.cart <- train(Min_Cas9_Gene~., data=EX, method="rpart", metric="Accuracy", trControl=control)
+results <- resamples(list(lda=fit.lda, svm=fit.svmRadial, cart=fit.cart))
+
+# Table comparison
+summary(results)
+# boxplot comparison
+bwplot(results)
+# Dot-plot comparison
+dotplot(results)
+confusionMatrix(fit.cart)
+#A partir do modelo com maior accuracy definir quais os genes mais importantes
+import=varImp(fit.cart,scale=F)
+GI<-import$importance
+ordem1<-order(GI$Overall, decreasing = T)
+GI<-as.data.frame(GI)
+rownames(GI)<-rownames(import$importance)[ordem1]
+Genes20<-rownames(GI)[1:20]
+ExpressionTable = topTreat(fit.treat_ML, coef=NULL, number=length(fit_y2$genes), genelist=fit_y2$genes, adjust.method="BH")
+ExpressionTable = subset(ExpressionTable, ExpressionTable$ID0 %in% Genes20 )
+ExpressionTable
+
+
+
+
+#Copy_Number
+EXCopy = cbind(CopyNumber_UP, Min_Cas9_Gene)
+control <- trainControl(method="repeatedcv", number=10, repeats=3)
+seed <- 7
+
+# PLS-DA
+set.seed(seed)
+fit.ldaCopy <- train(Min_Cas9_Gene~., data=EXCopy, method="lda", metric="Accuracy", preProc=c("center", "scale"), trControl=control)
+
+# SVM 
+set.seed(seed)
+fit.svmRadialCopy <- train(Min_Cas9_Gene~., data=EXCopy, method="svmRadial", metric="Accuracy", preProc=c("center", "scale"), trControl=control, fit=FALSE)
+
+# Tree
+set.seed(seed)
+fit.cartCopy <- train(Min_Cas9_Gene~., data=EXCopy, method="rpart", metric="Accuracy", trControl=control)
+
+resultsCopy <- resamples(list(lda=fit.ldaCopy, svm=fit.svmRadialCopy, cart=fit.cartCopy))
+
+# Table comparison
+summary(resultsCopy)
+
+# boxplot comparison
+bwplot(resultsCopy)
+
+# Dot-plot comparison
+dotplot(resultsCopy)
+
+confusionMatrix(fit.cartCopy)
+
+#A partir do modelo com maior accuracy definir quais os genes mais importantes
+import=varImp(fit.cartCopy,scale=F)
+GICopy<-import$importance
+ordem2<-order(GICopy$Overall, decreasing = T)
+GICopy<-as.data.frame(GICopy)
+rownames(GICopy)<-rownames(import$importance)[ordem2]
+Genes20Copy<-rownames(GICopy)[1:20]
+CopyTable = topTreat(fit.treat_ML, coef=NULL, number=length(fit_y2$genes), genelist=fit_y2$genes, adjust.method="BH")
+CopyTable = subset(CopyTable, CopyTable$ID0 %in% Genes20Copy )
+CopyTable
+
+
+```
+
+Com a obtenção dos resultados do treino e teste dos modelos aplicados foi possivel concluir que o modelo que possuía mais *accuracy*, cerca de 83,05%, foi a **arvore de regressão** para os valores de expressão, obtendo uma *accuracy* de 81.77% para os dados relativos aos valores do número de copias dos genes.  Os modelos obtidos através do **SVM** foram os com pior *accuracy* para ambos os casos. O processo de **LDA** obtém um bom score para a previsão através dos dados de expressão. No entanto tem um resultado baixo para a previsão segundo os dados do número de copias dos genes.  Posto isto, foi utilizado o modelo das **arvores de regressão** de modo a obter os genes que mais contribuem para o sucesso na *accuracy* do modelo, foi obtido uma tabela do top 20 dos genes tanto para os modelos com a alimentação dos valores de expressão como com os valores do número de copias dos genes aplicados sobre os dados dos valores de expressão ou de valores do número de copias dos genes.
+
+Após a análise dos genes mais importantes, houve maior interesse da nossa parte no gene **MYC**, uma vez que este está presente nos genes essenciais presentes no **Achilles_Gene** e no Top20 obtido a partir do nosso modelo. O **MYC** é um gene pertencente a  uma família de genes reguladores que **codificam fatores de transcrição**, este contribui para a genese de muitos tumores em células humanas. Descobertas sobre a sua expressão e função pode levar a novas oportunidades terapeuticas contra o cancro. A ativação de MYC pode ser inibida por moléculas, o que indica que pode ser alvo de tratamento para certos tipos de tumores.
